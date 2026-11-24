@@ -350,12 +350,12 @@ mão (ADR 0014).
 | `auth.email.secure_password_change` | true | ID-06 |
 | `auth.email.max_frequency` | `60s` | intervalo mínimo entre e-mails para o mesmo endereço (S-AU-4 confirma a chave e o efeito) |
 | `auth.email.otp_length` / `otp_expiry` | 8 / 600 | ID-02; com 600 s e 30 verificações por 5 min por IP, 1% de chance de acerto exige cerca de 16 700 IPs por janela (10^8 códigos); plano B de S-AU-4: 10 / 300 |
-| `auth.email.smtp` | Resend (`smtp.resend.com`), senha em `env(RESEND_SMTP_PASSWORD)` | ID-15; sem SMTP próprio o limite de e-mails do Supabase é mínimo |
+| `auth.email.smtp` | host em `env(SMTP_HOST)`, senha em `env(RESEND_SMTP_PASSWORD)` | ID-15; valores por ambiente, Resend nos ambientes hospedados e entrega local validada na onda 2 |
 | `auth.email.template.<tipo>` | `content_path` para `supabase/templates/<tipo>.html` | ID-12 |
 | `auth.rate_limit.email_sent` | 60 por hora (mínimo 30, máximo 300; = 1,5 × o pico horário esperado) | **teto global do projeto**, não por IP nem por destinatário (R-ID-3). Alerta em 70% (§3.8) |
 | `auth.rate_limit.sign_in_sign_ups` | 30 por 5 min por IP | força bruta |
 | `auth.rate_limit.token_verifications` | 30 por 5 min por IP (plano B de S-AU-4: 10) | força bruta de OTP; teto também invariante |
-| `auth.hook.before_user_created` | `pg-functions://postgres/identity/before_user_created` | teto de 300 contas novas por hora no projeto (ID-18); a função conta `auth.users` da última hora e devolve erro 429; `execute` só para `supabase_auth_admin` |
+| `auth.hook.before_user_created.enabled` / `.uri` | `true` / `pg-functions://postgres/identity/before_user_created` | teto de 300 contas novas por hora no projeto (ID-18); a função conta `auth.users` da última hora e devolve erro 429; `execute` só para `supabase_auth_admin` |
 | `auth.external.<provedor>.enabled` | false, para todos (apple, google, github, ...) | superfície não usada; extensão liga em fragmento |
 | `auth.sms` / `auth.mfa.*.enroll_enabled` / `auth.saml.enabled` / `auth.oauth_server.enabled` / `auth.web3.*.enabled` | false | sem telefone, MFA de usuário final, SAML, servidor OAuth nem web3 (Q-AU-2) |
 | `auth.sessions.timebox` / `inactivity_timeout` | `720h` / `168h` | teto de vida (30 dias) e de inatividade (7 dias) do refresh token; se o plano não permitir, vale R17 |
@@ -397,6 +397,13 @@ entram no how-to de configuração, com o item de conferência.
 
 Notificações de segurança do Auth (aviso por e-mail quando a senha ou o e-mail muda) ficam
 ligadas se a versão do Supabase tiver o recurso (spike S-AU-3b).
+
+**SMTP por ambiente (decisão de 2026-11-24).** O dono aprovou substituir o host
+fixo por `env(SMTP_HOST)`. A onda 0 versiona referências de ambiente, sem
+credenciais nem hostname de container presumido. A onda 2, no S-TM-4, deve
+validar host, porta, usuário e remetente com o CLI fixado e provar que o
+ambiente local entrega somente ao Mailpit. O template de configuração não é
+evidência de envio local ou de domínio Resend configurado.
 
 **Templates.** Um arquivo por tipo (`confirmation`, `magic_link`, `recovery`, `email_change`,
 `reauthentication` e, se existirem, os de notificação). Cada arquivo escolhe o texto por ramos

@@ -142,6 +142,27 @@ ponto de extensão) e vira PR no base-app.
   (o pgTAP compara a lista real com núcleo mais `.d`); `execute` só para o `<ext>_system` dono do
   caso de uso. Papéis auxiliares começam por `<ext_schema>_`. São exceções fechadas do
   `db:lint-migrations`.
+  O guard valida os registros JSON com schemas estritos, sem procurar nomes em
+  strings arbitrárias de documentos. A serialização da onda 0 é:
+
+  ```json
+  { "functions": [{ "name": "grant_role", "signature": "()", "reason": "Conceder o papel de produto pela porta autorizada" }] }
+  ```
+
+  Esse documento fica em `supabase/tests/auth-fn-registry.d/<ext>.json`; `name`
+  é o identificador local ao schema da extensão e `signature` contém a lista
+  de argumentos PostgreSQL entre parênteses. Nome/assinatura são únicos.
+  O registro de grupos em `expected-group-members.d/<ext>.json` é:
+
+  ```json
+  { "audit_writer": ["panel_admin_grantor"], "audit_operator_writer": [], "audit_reader": [], "app_config_writer": [] }
+  ```
+
+  O exemplo corresponde à extensão `panel`. Só os quatro grupos conhecidos
+  são aceitos; cada membro começa pelo prefixo do schema declarado no nome
+  do arquivo. O guard confere o par grupo/membro dos papéis auxiliares;
+  a exceção já prevista para `<ext>_system` permanece. O pgTAP da onda 2
+  confere todos os membros efetivamente existentes, inclusive system roles.
 - **Manutenção por rota (D23).** `maintenance: 'exempt'` só com `auth.kind: 'webhook'` ou com
   política registrada como `{ operator: true }`; o teste estático lista as rotas isentas.
 - **Fachada do app (D24).** `apps/mobile/src/extensions/api.ts` (`extensionAuth`,

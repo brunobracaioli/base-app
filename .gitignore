@@ -1,4 +1,12 @@
 .env.local
 .env
-node-modules
+.env.*
+!.env.example
+node_modules/
+.turbo/
+.expo/
+coverage/
+dist/
+*.tsbuildinfo
+supabase/.temp/
 

@@ -16,7 +16,9 @@ valida as requisições). Escrever OpenAPI à mão e Zod à mão cria duas fonte
 - O OpenAPI 3.1 é **gerado** desses schemas em `docs/reference/openapi.yaml` (`pnpm
   contracts:openapi`) e commitado. O CI gera de novo e falha se houver diferença (drift).
 - Toda rota pública declara `security: []` no contrato. Um teste confere que as rotas públicas
-  do código são exatamente as do contrato (hoje `GET /v1/health` e `GET /v1/app-config`).
+  implementadas no código são exatamente as do contrato entregue na onda. O catálogo
+  completo prevê `GET /v1/health` e `GET /v1/app-config`; a onda 0 entrega apenas
+  o contrato health, e app-config entra na onda 5.
 - Schemas de body são `.strict()` (campo desconhecido é 400), imposto por regra de lint em
   `packages/contracts`.
 - Exceção `.strip()` (payload de emissor autenticado, em `packages/contracts/src/**/webhooks/**`):

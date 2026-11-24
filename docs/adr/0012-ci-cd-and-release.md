@@ -45,6 +45,26 @@ app (build, assinatura, envio às lojas, OTA) é um alvo de ataque de cadeia de 
   A atualização de `onlyBuiltDependencies`, removido no pnpm 11, foi aprovada pelo dono
   em 2026-11-24; mantém a allowlist e não autoriza exceções amplas.
 
+### Visibilidade verificada na onda 0 (2026-11-24)
+
+- A API consultada com o login do operador retornou zero Environments e 403
+  para rulesets, informando restrição do plano para o repositório privado.
+  Esse resultado é falha de proteção verificável, não aprovação manual.
+- A [API de rulesets](https://docs.github.com/en/rest/repos/rules?apiVersion=2026-03-10)
+  documenta que `bypass_actors` só é retornado a quem pode escrever no ruleset.
+  O workflow com `contents: read` e `actions: read` não tem essa permissão.
+  A ausência desse campo deve aparecer como verificação manual no baseline;
+  quando o operador consegue lê-lo, o doctor deve validar seu conteúdo.
+- A [API de Environments](https://docs.github.com/en/rest/deployments/environments?apiVersion=2026-03-10)
+  permite leitura com Actions read e descreve regras e revisores na resposta.
+  Ausência de Environment ou revisor obrigatório continua sendo falha.
+- Não houve execução de Actions com `GITHUB_TOKEN`: a implementação permanece
+  local, conforme a instrução de não fazer push. As conclusões de permissão
+  acima são documentais; não substituem a futura execução no workflow.
+- O plano necessário para rulesets pode diferir do necessário para revisores
+  obrigatórios em Environments privados. Confirmar ambos antes de contratar
+  um plano; tornar o repositório público é uma decisão separada do dono.
+
 ### API (Vercel)
 
 - Git integration: preview por PR, produção na `main` com **Deployment Checks** exigindo o CI

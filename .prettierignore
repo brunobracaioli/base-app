@@ -1,0 +1,10 @@
+AGENTS.md
+NOTES.md
+README.md
+docs/
+.git/
+node_modules/
+.turbo/
+coverage/
+dist/
+pnpm-lock.yaml

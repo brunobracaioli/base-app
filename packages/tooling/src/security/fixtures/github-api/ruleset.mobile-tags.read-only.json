@@ -1,0 +1,13 @@
+{
+  "id": 12,
+  "name": "mobile-release-tags",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/tags/mobile-v*"],
+      "exclude": []
+    }
+  },
+  "rules": [{ "type": "creation" }, { "type": "update" }, { "type": "deletion" }]
+}

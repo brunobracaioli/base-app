@@ -1,0 +1,20 @@
+rules:
+  - id: base-app.no-session-set-in-migrations
+    message: Do not use session-level SET; use transaction-local set_config with a bind.
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include:
+        - '**/*.sql'
+    pattern-regex: (?im)^\s*SET\s+(SESSION\s+)?(ROLE|search_path|request\.[A-Za-z_]+|app\.[A-Za-z_]+)\b
+
+  - id: base-app.no-direct-audit-events-insert
+    message: Write audit.events only through the platform audit recorder.
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include:
+        - '**/*.sql'
+      exclude:
+        - /apps/web/src/platform/audit/**
+    pattern-regex: (?im)^\s*INSERT\s+INTO\s+"?audit"?\s*\.\s*"?events"?\b

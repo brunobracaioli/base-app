@@ -1,0 +1,46 @@
+rules:
+  - id: base-app.no-console
+    message: Use the structured application logger instead of console methods.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern: console.$METHOD(...)
+
+  - id: base-app.no-sql-raw
+    message: Do not build SQL with sql.raw; use parameterized query builders.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern: sql.raw(...)
+
+  - id: base-app.no-sql-lit
+    message: Do not inject literal SQL with sql.lit; bind external values.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern: sql.lit(...)
+
+  - id: base-app.no-session-set
+    message: Do not change the session role or application GUC through embedded SQL.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-regex: (?is)\bSET\s+(SESSION\s+)?(ROLE|request\.[A-Za-z_]+|app\.[A-Za-z_]+)\b
+
+  - id: base-app.no-direct-audit-events-in-query-string
+    message: Write audit.events only through the platform audit recorder.
+    severity: ERROR
+    languages: [typescript, javascript]
+    paths:
+      exclude:
+        - /apps/web/src/platform/audit/**
+        - /packages/tooling/src/security/**
+    pattern-regex: (?is)\bINSERT\s+INTO\s+"?audit"?\s*\.\s*"?events"?\b
+
+  - id: base-app.no-direct-audit-events-kysely
+    message: Write audit.events only through the platform audit recorder.
+    severity: ERROR
+    languages: [typescript, javascript]
+    paths:
+      exclude:
+        - /apps/web/src/platform/audit/**
+        - /packages/tooling/src/security/**
+    pattern-either:
+      - pattern: $DB.insertInto('audit.events')
+      - pattern: $DB.insertInto("audit.events")

@@ -71,6 +71,10 @@ exigida pelo prompt desta sessão.
 - JSON/JSONC do Supabase pode ter precedência sobre TOML. Aprovado pelo dono:
   rejeitar arquivos concorrentes para garantir que o guard valide a
   configuração efetivamente usada.
+- O dono aprovou `env(SMTP_HOST)` em lugar do host SMTP fixo, preservando
+  `env(RESEND_SMTP_PASSWORD)`. Host, porta, usuário, remetente e a entrega local
+  exclusiva ao Mailpit continuam sujeitos ao S-TM-4 da onda 2; não se presume
+  um hostname de container nem uma conta Resend configurada.
 - Exemplos de URLs com `<ref-prod>`/`<ref-staging>` não são URLs válidas.
   O exemplo usará domínios reservados `.invalid`, explicitamente sem serviço,
   preservando os demais valores de exemplo já fornecidos na spec.
@@ -91,8 +95,75 @@ Fontes de compatibilidade consultadas: [pnpm 11 — mudanças de configuração]
 [JSON Schema nativo do Zod](https://zod.dev/json-schema) e
 [changelog do Supabase](https://supabase.com/changelog.md).
 
-## Encerramento
+## Resultado local e critérios de aceite
 
-Registrar aqui os comandos e resultados observados, conferir o diff e criar
-commits Conventional Commits. Atualizar `NOTES.md` com o estado real. Não
-marcar a onda como concluída enquanto houver requisito obrigatório pendente.
+Verificação final em 2026-11-24, Node 24.22.3 e pnpm 12.23.0. Comandos
+executados pelo gerente no checkout integrado, após a revisão e as correções:
+
+| Comando/gate | Resultado observado |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | Exit 0; 243 entradas verificadas contra a política de supply chain, sem exceção à idade mínima |
+| `pnpm turbo run lint typecheck test` | Exit 0; 9/9 tarefas; 119 testes em 9 arquivos (config 7, contratos 7, tooling 105) |
+| `pnpm architecture:check` | Exit 0; 56 módulos e 126 dependências; nenhuma rota real de API ainda |
+| `pnpm format:check` | Exit 0 |
+| `pnpm contracts:openapi` | Exit 0; OpenAPI gerado da mesma fonte Zod |
+| `git diff --exit-code -- docs/reference/openapi.yaml` após regenerar | Exit 0; comparação contra o arquivo já adicionado ao índice, não contra um arquivo untracked |
+| `pnpm supabase:config` e `pnpm supabase:config:check` | Exit 0; TOML gerado e atualizado |
+| `git diff --exit-code -- supabase/config.toml` após regenerar | Exit 0; comparação contra o TOML já adicionado ao índice |
+| `pnpm db:lint-migrations` | Exit 0; zero migrations reais nesta onda; políticas exercitadas pelas fixtures |
+| `pnpm vercel:check` | Exit 0; `vercel.json` ainda ausente, explicitamente informado pelo comando |
+| Semgrep 1.186.0: testes das regras TS/SQL | Exit 0; 6/6 e 2/2 regras com testes aprovados |
+| Semgrep: scan de `packages` e `supabase` | Exit 0; 37 arquivos analisados, zero achados |
+| zizmor 1.33.1: `.github/` | Exit 0; nenhum achado reportado no perfil padrão |
+| zizmor: fixture `pull_request_target` | Exit 14 esperado; trigger perigoso e injeção de expressão detectados |
+| Gitleaks 8.30.1: working tree | Exit 0; nenhum vazamento |
+| OSV-Scanner 2.7.1 | Exit 0; 260 pacotes no lockfile, nenhum problema encontrado |
+| Pins de Actions/imagens | 4 commits conferidos no GitHub e 3 digests conferidos nos registries; nenhum `uses` pinado por tag |
+| `pnpm security:doctor --repo brunobracaioli/base-app` | Exit 1 esperado para o estado remoto atual: 3 Environments ausentes e rulesets indisponíveis (403); 2 itens manuais |
+
+O Semgrep precisou de cache de versão em `/tmp` porque o home está somente
+leitura no sandbox. Isso não desativou regra nem suprimiu achado. O pnpm usou
+store dentro de `node_modules` porque o store global não aceitava hard links.
+
+| Critério da onda 0 | Teste/evidência |
+| --- | --- |
+| Instalação congelada, lint, tipos e testes | Gate integrado acima, exit 0 |
+| Doctor rejeita proteção ausente; zizmor rejeita workflow inseguro | `packages/tooling/src/security/security-doctor.test.ts` (18 testes) e fixture `fixtures/zizmor/pull-request-target.yml` |
+| Migrations de extensão e exceções limitadas | `packages/tooling/src/guards/db-lint-migrations.test.ts` (24 testes), incluindo roles, FK 1:1, registros estritos e delta contra upstream |
+| Allowlist Vercel | `packages/tooling/src/guards/vercel-config.test.ts` (9 testes) |
+| Anônimo/manual linking só com marcador e CAPTCHA | `packages/tooling/src/guards/supabase-config.test.ts` (11 testes) |
+| Cliente Supabase restrito ao auth | `packages/tooling/src/architecture/dependency-cruiser.test.ts` (18 testes), incluindo pacote resolvido |
+| Sobrescrita protegida, ordem, drift e arquivos JSON concorrentes | Mesma suíte de Supabase; geração/check do arquivo real |
+| Contrato e geração OpenAPI | `packages/contracts/src/contracts.test.ts` (7 testes), com extensões e colisões |
+| Produto inválido falha com Zod | `packages/config/src/product.schema.test.ts` (7 testes) |
+| Scanners e Actions pinadas | Workflow versionado, scans locais e conferência independente dos SHAs/digests |
+| `.strict()`/`strictObject`, `.strip()` só em webhooks | `packages/tooling/src/lint/rules.test.ts` (21 testes), também cobrindo importação indireta, paths falsos e JWT |
+
+Há ainda quatro testes de proveniência de handlers em
+`packages/tooling/src/architecture/routes-use-define-route.test.ts`. São provas
+estáticas com fixtures; a implementação de `defineRoute` e a rota health são
+da onda 1.
+
+## Limites, ação humana e próxima onda
+
+- A onda não foi marcada ✅. O código está validado localmente, mas o doctor
+  remoto reprova e não houve execução de Actions com o token do workflow.
+  Fixtures não substituem essa prova. Nenhum push ou PR da implementação foi feito.
+- pgTAP, `supabase start`, migrations aplicadas e drift Kysely não foram
+  executados: os artefatos são da onda 2 e o Docker desta distribuição está
+  indisponível. O guard TOML não prova boot do Auth, entrega SMTP ou config push.
+- Nenhum spike formal está previsto na onda 0. As escolhas de compatibilidade
+  e as decisões aprovadas estão nas specs/ADRs; S-DB-1 e S-TM-4 continuam para
+  a onda 2. O parser SQL está alinhado ao PostgreSQL 17; corpos PL/pgSQL não
+  constituem prova de autorização pelo parser e continuam sujeitos à revisão
+  e aos testes de catálogo/permissões da onda 2.
+- O dono precisa resolver os Environments e rulesets descritos no baseline,
+  conferir os itens manuais e autorizar a execução real de CI em etapa futura.
+  Não basta contratar um plano que só ofereça rulesets; revisores obrigatórios
+  em Environments privados também precisam estar disponíveis.
+- Não há segredo necessário para os testes locais. Para a etapa SMTP, preencher
+  `SMTP_HOST` e `RESEND_SMTP_PASSWORD` em `.env.local`/secret manager conforme o
+  ambiente, sem compartilhar valores no chat. O template mantém SMTP customizado
+  desativado até essa configuração e validação.
+- Depois do fechamento da onda 0, o próximo grupo é 1/2/3, em worktrees distintas,
+  com contratos compartilhados fixados e integração de uma branch por vez.
