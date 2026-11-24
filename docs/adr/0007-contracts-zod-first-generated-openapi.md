@@ -44,6 +44,8 @@ valida as requisições). Escrever OpenAPI à mão e Zod à mão cria duas fonte
 
 - O gerador de OpenAPI a partir de Zod precisa suportar a versão do Zod usada; a onda 0 escolhe
   a biblioteca (ou o `toJSONSchema` nativo do Zod 4) e trava a versão.
+  Escolha da onda 0: Zod 4 com `toJSONSchema` nativo e serialização YAML
+  determinística; não há uma segunda biblioteca de conversão do contrato.
 - Revisores olham o diff do YAML gerado nas PRs que mudam contratos.
 - Numa versão derivada, `docs/reference/openapi.yaml` inclui as rotas das extensões e por isso
   difere do base-app. É arquivo gerado: num conflito de merge, descarta-se o conteúdo e roda-se

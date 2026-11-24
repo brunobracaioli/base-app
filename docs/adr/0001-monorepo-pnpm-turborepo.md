@@ -29,7 +29,8 @@ Regras:
 - Lockfile commitado; `--frozen-lockfile` no CI.
 - `apps/mobile` nunca importa `apps/web`; os dois compartilham código só por `packages/*`
   (regra `mobile-no-server` do dependency-cruiser).
-- Política de instalação do pnpm em ADR 0012 (`onlyBuiltDependencies`, `minimumReleaseAge`).
+- Política de instalação do pnpm em ADR 0012 (`allowBuilds`, `strictDepBuilds`,
+  `minimumReleaseAge: 1440`).
 
 ## Alternativas consideradas
 

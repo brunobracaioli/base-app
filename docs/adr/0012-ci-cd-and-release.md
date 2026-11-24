@@ -37,9 +37,13 @@ app (build, assinatura, envio às lojas, OTA) é um alvo de ataque de cadeia de 
   `apps/web/src/platform/auth/` e `docs/security/`; `zizmor` no CI (barra `pull_request_target`,
   injeção de expressão e `permissions` ausente); `SECURITY.md` com canal privado e relato privado
   de vulnerabilidade ligado.
-- **Supply chain do pnpm:** `onlyBuiltDependencies` (allowlist dos pacotes que podem rodar
-  scripts de instalação) e `minimumReleaseAge` (não instala versão publicada há pouco tempo). O
-  job de install não tem acesso a segredos.
+- **Supply chain do pnpm:** pnpm 12.23.0, com `allowBuilds` explícito (allowlist dos
+  pacotes que podem rodar scripts), `strictDepBuilds: true` e `minimumReleaseAge: 1440`
+  em `pnpm-workspace.yaml`. Builds desconhecidos são bloqueados; versões publicadas
+  há menos de 24 horas não são instaladas. `.npmrc` fica restrito a registro e
+  autenticação, sem credenciais versionadas. O job de install não tem acesso a segredos.
+  A atualização de `onlyBuiltDependencies`, removido no pnpm 11, foi aprovada pelo dono
+  em 2026-11-24; mantém a allowlist e não autoriza exceções amplas.
 
 ### API (Vercel)
 

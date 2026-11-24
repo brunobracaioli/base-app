@@ -369,6 +369,10 @@ mão (ADR 0014).
 arquivo gerado, no CI do núcleo e no de toda versão derivada, e falha se alguma destas regras
 for violada (o fragmento só pode endurecer):
 
+O gerador e o check também falham se existir `supabase/config.json` ou
+`supabase/config.jsonc`: nenhum formato concorrente pode sobrepor o TOML validado
+(ADR 0014).
+
 | Chave | Regra |
 |-------|-------|
 | `api.enabled` | false |

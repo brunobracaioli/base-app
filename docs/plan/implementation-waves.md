@@ -52,10 +52,12 @@ merge de uma por vez.
 
 - **Objetivo**: repositório pronto para receber código, com qualidade e segurança no CI desde
   o primeiro commit.
-- **Specs/ADRs**: base-app §3.3, §3.5, §3.9, §3.11; ADRs 0001, 0007, 0010, 0012, 0013.
+- **Specs/ADRs**: base-app §3.3, §3.4.2–3.4.3, §3.5, §3.9, §3.11; identity-and-auth §3.7;
+  ADRs 0001, 0007, 0010, 0012, 0013, 0014.
 - **Escopo**:
   - `package.json` raiz, `pnpm-workspace.yaml`, `turbo.json`, `.nvmrc`, `.npmrc` (pnpm com
-    `onlyBuiltDependencies` e `minimumReleaseAge`).
+    `allowBuilds` explícito, `strictDepBuilds: true` e `minimumReleaseAge: 1440` em
+    `pnpm-workspace.yaml`; `.npmrc` só para registro/autenticação, sem credenciais).
   - `packages/tooling`: tsconfig strict (`noUncheckedIndexedAccess`,
     `exactOptionalPropertyTypes`), ESLint com `no-console` e regra de `.strict()` nos
     schemas de body, Prettier, dependency-cruiser com as regras de base-app §3.5.
@@ -96,6 +98,8 @@ merge de uma por vez.
   - Regra do dependency-cruiser `supabase-client-only-in-auth` (usada na onda 3).
   - `supabase:config:check` reprova um fragmento de teste que afrouxa uma chave protegida sem o
     marcador e aceita o mesmo com o marcador e valor dentro da regra.
+  - Gerador e check recusam `supabase/config.json` e `supabase/config.jsonc`, que poderiam
+    ter precedência sobre o TOML validado.
   - `pnpm contracts:openapi && git diff --exit-code docs/reference/openapi.yaml` termina com 0.
   - Um `product.config.ts` inválido faz o teste de `packages/config` falhar com a mensagem do
     Zod.

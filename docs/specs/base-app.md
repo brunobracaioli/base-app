@@ -883,8 +883,8 @@ export default defineProduct({
     cacheTtlSec: 60,
   },
   environments: {                                // valores públicos, conferidos no boot (ver abaixo)
-    production: { supabaseUrl: 'https://<ref-prod>.supabase.co', revenuecatProjectId: 'proj_prod' },
-    staging: { supabaseUrl: 'https://<ref-staging>.supabase.co', revenuecatProjectId: 'proj_stg' },
+    production: { supabaseUrl: 'https://production.example.invalid', revenuecatProjectId: 'proj_prod' },
+    staging: { supabaseUrl: 'https://staging.example.invalid', revenuecatProjectId: 'proj_stg' },
   },
   quotas: { 'examples.premium_action': { perDay: { pro: 500 }, globalPerDay: 20_000 } },
   legal: { termsPath: '/terms', privacyPath: '/privacy' },
@@ -895,6 +895,10 @@ export default defineProduct({
 `auth.methods` liga e desliga os métodos no app e no contrato. O Supabase não separa código e
 senha no provedor de e-mail, então desligar `email_password` não impede a chamada direta ao
 Auth; o efeito é só de produto, não de segurança.
+
+Os valores acima são exemplos não operacionais. Os domínios reservados `.invalid`
+substituem placeholders que não seriam URLs válidas; não representam projetos provisionados.
+O dono deve preencher os identificadores reais antes de configurar um ambiente.
 
 Limites do schema (falha de validação para o build e o boot): `auth.recentAuthMaxAgeSec` entre
 60 e 900 (padrão 300); `billing.cacheTtlSec` entre 15 e 300 (padrão 60); cada `perDay` e cada
@@ -964,7 +968,8 @@ Controles do repositório (G2 do threat model), como código e verificados:
 
 Actions pinadas por SHA, `permissions: contents: read` por padrão. O Supabase CLI e o EAS
 exigem tokens estáticos (sem OIDC); ficam em GitHub Environments com aprovação, escopo mínimo
-e rotação trimestral (ADR 0012). pnpm com `onlyBuiltDependencies` e `minimumReleaseAge`.
+e rotação trimestral (ADR 0012). pnpm 12 com `allowBuilds` explícito,
+`strictDepBuilds: true` e `minimumReleaseAge: 1440` em `pnpm-workspace.yaml`.
 
 ### 3.12 Observabilidade
 
@@ -998,6 +1003,7 @@ dos invariantes.
 | Controle | Valor | Onde |
 |----------|-------|------|
 | Vercel Firewall: rate limit em `/api` | 300 req/min por IP | regra do projeto (how-to `cost-guardrails`) |
+| `GET /v1/health` | 60 req/min por IP; Redis indisponível permite a leitura com alerta (`open`) | contrato e `defineRoute` |
 | Teto por IP nas rotas autenticadas | 120 req/min por IP (/64 no IPv6), junto com o balde do usuário | `defineRoute` (`ipLimit`) |
 | Teto por IP antes da verificação de webhook | 60 req/min | `defineRoute` |
 | Contas novas por IP | 30 por 5 min (`sign_in_sign_ups`) | `config.base.toml` |
@@ -1064,6 +1070,9 @@ Contrato executável em `packages/contracts` (ADR 0007). Catálogo:
 | POST | `/v1/examples/premium-action` | usuário + entitlement + `Idempotency-Key` | billing |
 
 `GET /v1/health` responde `200 {"status":"ok"}` sem versão, commit ou dependências.
+O contrato declara `security: []` e `rateLimit: { key: 'ip', limit: 60, windowSec: 60,
+ipLimit: 60, onStoreFailure: 'open' }`. A política preserva a disponibilidade do health
+quando o Redis está indisponível; sua implementação em `defineRoute` pertence à onda 1.
 
 O contrato de `POST /v1/account/deletion-request` já prevê as respostas `completed` (base-app)
 e `scheduled` (versões com carência), para que o app trate as duas sem mudança. `GET` informa

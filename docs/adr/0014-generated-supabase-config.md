@@ -24,6 +24,11 @@ a lista de arquivos permitidos") quebra.
 - O `config.toml` commitado é o gerado. O CI roda o gerador e falha se houver diferença. Em
   conflito de merge, o arquivo é regenerado, nunca resolvido à mão (spec §3.4.3).
 - Quem altera a configuração do núcleo edita `config.base.toml` e regenera.
+- **Fonte efetiva única:** o gerador e `supabase:config:check` recusam a existência
+  de `supabase/config.json` ou `supabase/config.jsonc`. Versões atuais do CLI aceitam
+  esses formatos com precedência sobre TOML; permitir um deles tornaria possível
+  executar configuração diferente da validada. Esse endurecimento foi aprovado
+  pelo dono em 2026-11-24. O formato versionado continua TOML.
 - **Invariantes de segurança (G32).** `pnpm supabase:config:check` roda sobre o `config.toml`
   gerado, no CI do núcleo e no de toda versão derivada (tabela em identity-and-auth.md §3.7:
   `api.enabled = false`, `jwt_expiry ≤ 900`, `secure_password_change`, `double_confirm_changes`,
