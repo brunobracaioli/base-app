@@ -12,7 +12,7 @@ import { z } from 'zod';
 import {
   parseCoreAuthFunctionRegistryDocument,
   type CoreAuthFunctionRegistryEntry,
-} from './core-auth-function-registry.js';
+} from './core-auth-function-registry.ts';
 
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,62}$/);
 const privilege = z.enum([
