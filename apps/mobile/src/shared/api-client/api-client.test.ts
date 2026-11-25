@@ -108,13 +108,11 @@ describe('typed API client', () => {
       baseUrl: 'https://api.example.invalid',
       appVersion: '1.2.3',
       platform: 'ios',
-      fetch: jest
-        .fn<Promise<Response>, Parameters<typeof globalThis.fetch>>()
-        .mockResolvedValue(
-          response({ status: 'unexpected' }, 200, 'application/json', {
-            'X-Request-Id': serverRequestId,
-          }),
-        ),
+      fetch: jest.fn<Promise<Response>, Parameters<typeof globalThis.fetch>>().mockResolvedValue(
+        response({ status: 'unexpected' }, 200, 'application/json', {
+          'X-Request-Id': serverRequestId,
+        }),
+      ),
       session: {
         getAccessToken: jest.fn().mockResolvedValue(null),
         refreshSession: jest.fn().mockResolvedValue(null),

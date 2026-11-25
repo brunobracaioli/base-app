@@ -28,7 +28,9 @@ describe('mobile Expo config', () => {
 
   it('rejects partial OTA signing inputs instead of enabling unsigned updates', () => {
     expect(() => buildMobileExpoConfig({ EAS_PROJECT_ID: 'caller-project' })).toThrow(/signing/i);
-    expect(() => buildMobileExpoConfig({ EXPO_UPDATE_CERTIFICATE_PATH: 'certificate.pem' })).toThrow(/project/i);
+    expect(() =>
+      buildMobileExpoConfig({ EXPO_UPDATE_CERTIFICATE_PATH: 'certificate.pem' }),
+    ).toThrow(/project/i);
   });
 
   it('pins the EAS build toolchain to the repository runtime versions', () => {
