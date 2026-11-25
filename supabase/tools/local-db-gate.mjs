@@ -57,6 +57,8 @@ function command(program, args, { input, env = {} } = {}) {
   });
   return {
     exitCode: result.status ?? 1,
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
     output: `${result.stdout || ''}\n${result.stderr || ''}`,
     spawnError: result.error?.code || null,
   };
@@ -247,6 +249,48 @@ function supabase(args, password) {
   });
 }
 
+function effectiveDatabasePassword(configuredPassword) {
+  const result = supabase(['status', '--output', 'json'], configuredPassword);
+  if (result.exitCode !== 0) throw new Error('database_status_failed');
+
+  let status;
+  try {
+    status = JSON.parse(result.stdout.trim());
+  } catch {
+    throw new Error('database_status_json_invalid');
+  }
+  if (status === null || typeof status !== 'object' || Array.isArray(status))
+    throw new Error('database_status_shape_invalid');
+  if (typeof status.DB_URL !== 'string') throw new Error('database_status_url_missing');
+
+  let databaseUrl;
+  let username;
+  let password;
+  try {
+    databaseUrl = new URL(status.DB_URL);
+    username = decodeURIComponent(databaseUrl.username);
+    password = decodeURIComponent(databaseUrl.password);
+  } catch {
+    throw new Error('database_status_url_invalid');
+  }
+
+  if (
+    !['postgres:', 'postgresql:'].includes(databaseUrl.protocol) ||
+    !['127.0.0.1', 'localhost'].includes(databaseUrl.hostname) ||
+    databaseUrl.port !== String(databasePort) ||
+    username !== 'postgres' ||
+    databaseUrl.pathname !== '/postgres' ||
+    databaseUrl.search !== '' ||
+    databaseUrl.hash !== ''
+  ) {
+    throw new Error('database_status_url_outside_owned_local_target');
+  }
+  if (password.length === 0 || /[\u0000\r\n]/.test(password))
+    throw new Error('database_status_password_invalid');
+
+  return password;
+}
+
 function stage(stageName, commandResult) {
   emit({
     stage: stageName,
@@ -303,7 +347,8 @@ function installRegistryFixtures(password) {
 }
 
 function testDb(password) {
-  installRegistryFixtures(password);
+  const effectivePassword = effectiveDatabasePassword(password);
+  installRegistryFixtures(effectivePassword);
   const requestedPaths = process.argv.slice(3);
   const allowedTestNames = new Set([
     'w2_catalog_privileges.test.sql',
@@ -329,9 +374,10 @@ function testDb(password) {
         '--db-url',
         `postgresql://supabase_admin@127.0.0.1:${databasePort}/postgres`,
       ],
-      password,
+      effectivePassword,
     ),
   );
+  return effectivePassword;
 }
 
 function dropRegistryFixtures(password) {
@@ -390,11 +436,12 @@ async function main() {
     emit({ stage: 'preflight', ...facts, portsChecked: [databasePort, poolerPort] });
   }
   const password = mode === 'stop' && !existsSync(passwordPath) ? '' : databasePassword();
+  let fixturePassword = password;
 
   try {
     if (mode === 'start' || mode === 'full') start(password);
     if (mode === 'reset' || mode === 'full') reset(password);
-    if (mode === 'test' || mode === 'full') testDb(password);
+    if (mode === 'test' || mode === 'full') fixturePassword = testDb(password);
     if (mode === 'stop') {
       const cleanup = stop(password);
       emit({ stage: 'cleanup', ...cleanup });
@@ -403,7 +450,7 @@ async function main() {
       }
     }
     if (mode === 'full') {
-      const fixturesRemoved = dropRegistryFixtures(password);
+      const fixturesRemoved = dropRegistryFixtures(fixturePassword);
       const cleanup = stop(password);
       emit({ stage: 'cleanup', fixturesRemoved, ...cleanup });
       if (!fixturesRemoved || cleanup.stopExitCode !== 0 || !cleanup.networkRemoved) {
