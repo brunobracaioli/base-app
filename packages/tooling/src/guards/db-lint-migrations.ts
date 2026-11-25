@@ -1,9 +1,13 @@
-import { access, readdir, readFile } from 'node:fs/promises';
+import { access, lstat, readdir, readFile } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { parse as parsePostgresSql } from 'libpg-query';
 import { z } from 'zod';
+import {
+  parseCoreAuthFunctionRegistryDocument,
+  type CoreAuthFunctionRegistryEntry,
+} from '../db/core-auth-function-registry.js';
 
 type JsonObject = Record<string, unknown>;
 type PgName = readonly string[];
@@ -26,23 +30,6 @@ const allowedCoreGroupRoles = new Set([
   'app_config_writer',
 ]);
 
-const functionRegistryEntrySchema = z
-  .object({
-    name: z.string().regex(/^[a-z][a-z0-9_]*$/),
-    signature: z
-      .string()
-      .regex(/^\([^;]*\)$/)
-      .max(200),
-    reason: z.string().trim().min(1).max(200),
-  })
-  .strict();
-
-const authFunctionRegistrySchema = z
-  .object({
-    functions: z.array(functionRegistryEntrySchema),
-  })
-  .strict();
-
 const groupMemberArraySchema = z
   .array(z.string().regex(/^[a-z][a-z0-9_]*$/))
   .refine((members) => new Set(members).size === members.length, 'duplicate member');
@@ -63,16 +50,16 @@ export class MigrationLintError extends Error {
   }
 }
 
-export interface AuthFunctionRegistration {
-  readonly name: string;
-  readonly signature: string;
-  readonly reason: string;
-}
+export type CoreAuthFunctionRegistration = CoreAuthFunctionRegistryEntry;
 
 export interface MigrationLintIssue {
   readonly code: string;
   readonly message: string;
   readonly statement: number;
+}
+
+export interface CoreAuthFunctionLintIssue extends MigrationLintIssue {
+  readonly migration: string;
 }
 
 export interface ExtensionMigration {
@@ -81,7 +68,6 @@ export interface ExtensionMigration {
 }
 
 export interface ExtensionMigrationLintOptions {
-  readonly registeredFunctions?: readonly AuthFunctionRegistration[];
   readonly registeredGroupRoles?: ReadonlyMap<string, ReadonlySet<string>>;
   readonly knownPrimaryKeyColumns?: ReadonlyMap<string, ReadonlySet<string>>;
 }
@@ -341,16 +327,6 @@ function functionOptions(payload: JsonObject): {
   return { securityDefiner, emptySearchPath };
 }
 
-function findFunctionRegistration(
-  registrations: readonly AuthFunctionRegistration[],
-  qualifiedName: string,
-  signature: string,
-): AuthFunctionRegistration | undefined {
-  return registrations.find(
-    (entry) => entry.name === qualifiedName && entry.signature.replaceAll(' ', '') === signature,
-  );
-}
-
 interface ForeignKeyNode {
   readonly constraint: JsonObject;
   readonly inlineColumn: string | null;
@@ -594,44 +570,6 @@ function checkRoleGrant(
   return null;
 }
 
-function checkAuthFunctionOwnerTransfer(
-  payload: JsonObject,
-  extensionSchema: string,
-  statements: readonly ParsedStatement[],
-  registrations: readonly AuthFunctionRegistration[],
-): string | null {
-  if (payload.objectType !== 'OBJECT_FUNCTION')
-    return 'Only function ownership may transfer to auth_fn_owner.';
-  const object = nodeVariant(payload.object);
-  if (object?.tag !== 'ObjectWithArgs') return 'Unsupported function ownership target.';
-  const nameParts = stringsFromName(object.payload.objname);
-  if (nameParts.length !== 2 || nameParts[0] !== extensionSchema)
-    return `auth_fn_owner may only own functions in ${extensionSchema}.`;
-  if (!isRecord(payload.newowner) || payload.newowner.rolename !== 'auth_fn_owner')
-    return 'Only ownership transfers to auth_fn_owner are covered by this exception.';
-
-  const qualifiedName = nameParts.join('.');
-  const signature = `(${nodeArray(object.payload.objargs)
-    .map((arg) => stringsFromName(getNodeValue(arg, 'names')).join('.'))
-    .join(',')})`;
-  const registration = findFunctionRegistration(registrations, qualifiedName, signature);
-  if (registration === undefined || registration.reason.trim().length === 0) {
-    return `Function ${qualifiedName}${signature} must be listed with a reason in auth-fn-registry.d.`;
-  }
-
-  const definition = findFunctionDefinition(statements, qualifiedName);
-  if (definition === undefined)
-    return `Function ${qualifiedName}${signature} must be defined in the same migration so its security options can be parsed.`;
-  const definitionSignature = getFunctionSignature(definition.payload);
-  if (definitionSignature !== signature)
-    return `Function ${qualifiedName} definition signature does not match auth-fn-registry.d.`;
-  const options = functionOptions(definition.payload);
-  if (!options.securityDefiner || !options.emptySearchPath) {
-    return `Function ${qualifiedName}${signature} must be SECURITY DEFINER with SET search_path = ''.`;
-  }
-  return null;
-}
-
 function hasFunctionOwnerTransfer(
   statements: readonly ParsedStatement[],
   qualifiedName: string,
@@ -658,6 +596,46 @@ function hasFunctionOwnerTransfer(
       .join(',')})`;
     return name === qualifiedName && args === signature;
   });
+}
+
+function functionOwnerTransfer(
+  statement: ParsedStatement,
+): { readonly name: string; readonly signature: string; readonly owner: string } | null {
+  const ownerChange = nodeVariant(statement.stmt);
+  if (
+    ownerChange?.tag !== 'AlterOwnerStmt' ||
+    ownerChange.payload.objectType !== 'OBJECT_FUNCTION' ||
+    !isRecord(ownerChange.payload.newowner) ||
+    typeof ownerChange.payload.newowner.rolename !== 'string'
+  )
+    return null;
+  const object = nodeVariant(ownerChange.payload.object);
+  if (object?.tag !== 'ObjectWithArgs') return null;
+  const nameParts = stringsFromName(object.payload.objname);
+  if (nameParts.length === 0 || nameParts.length > 2) return null;
+  const signature = `(${nodeArray(object.payload.objargs)
+    .map((arg) => stringsFromName(getNodeValue(arg, 'names')).join('.'))
+    .join(',')})`;
+  return {
+    name: nameParts.length === 1 ? `public.${nameParts[0]}` : nameParts.join('.'),
+    signature,
+    owner: ownerChange.payload.newowner.rolename,
+  };
+}
+
+function coreAuthFunctionIdentity(schema: string, name: string, signature: string): string {
+  return `${schema}.${name}${signature.replaceAll(' ', '')}`;
+}
+
+function hasNamedRole(value: unknown, roleName: string): boolean {
+  if (Array.isArray(value)) return value.some((entry) => hasNamedRole(entry, roleName));
+  if (!isRecord(value)) return false;
+  if (
+    (value.rolename === roleName || value.role === roleName) &&
+    Object.keys(value).some((key) => key === 'rolename' || key === 'role')
+  )
+    return true;
+  return Object.values(value).some((entry) => hasNamedRole(entry, roleName));
 }
 
 function findFunctionDefinition(
@@ -714,7 +692,6 @@ function analyzeStatement(
   options: ExtensionMigrationLintOptions,
 ): MigrationLintIssue | null {
   const payload = statementNode.payload;
-  const registeredFunctions = options.registeredFunctions ?? [];
   const registeredGroupRoles =
     options.registeredGroupRoles ?? new Map<string, ReadonlySet<string>>();
 
@@ -796,15 +773,6 @@ function analyzeStatement(
   }
   if (statementNode.tag === 'AlterOwnerStmt') {
     const targetOwner = isRecord(payload.newowner) ? payload.newowner.rolename : undefined;
-    if (targetOwner === 'auth_fn_owner') {
-      const message = checkAuthFunctionOwnerTransfer(
-        payload,
-        extensionSchema,
-        statements,
-        registeredFunctions,
-      );
-      return message === null ? null : { code: 'auth-function-owner', message, statement: 0 };
-    }
     const object = nodeVariant(payload.object);
     const parts = object?.tag === 'ObjectWithArgs' ? stringsFromName(object.payload.objname) : [];
     const schema = schemaForQualifiedName(parts, payload.objectType);
@@ -817,15 +785,11 @@ function analyzeStatement(
       };
     if (payload.objectType === 'OBJECT_FUNCTION') {
       const qualifiedName = parts.join('.');
-      const signature = `(${nodeArray(object?.payload.objargs)
-        .map((arg) => stringsFromName(getNodeValue(arg, 'names')).join('.'))
-        .join(',')})`;
       const definition = findFunctionDefinition(statements, qualifiedName);
       const options = definition === undefined ? null : functionOptions(definition.payload);
       if (
         schema === extensionSchema &&
         targetOwner === `${extensionSchema}_system` &&
-        !findFunctionRegistration(registeredFunctions, qualifiedName, signature) &&
         options?.securityDefiner === true &&
         options.emptySearchPath
       ) {
@@ -834,7 +798,7 @@ function analyzeStatement(
       return {
         code: 'extension-function-owner',
         message:
-          'Own-schema SECURITY DEFINER functions must use the extension system role; functions registered for auth_fn_owner may target only auth_fn_owner.',
+          'Own-schema SECURITY DEFINER functions must use the extension system role; core ownership transfers are not permitted in extension migrations.',
         statement: 0,
       };
     }
@@ -976,13 +940,11 @@ function analyzeStatement(
             message: `SECURITY DEFINER function ${name}${signature} must set search_path to an empty value.`,
             statement: 0,
           };
-        const registered = findFunctionRegistration(registeredFunctions, name, signature);
-        const requiredOwner =
-          registered === undefined ? `${extensionSchema}_system` : 'auth_fn_owner';
+        const requiredOwner = `${extensionSchema}_system`;
         if (!hasFunctionOwnerTransfer(statements, name, signature, requiredOwner)) {
           return {
             code: 'function-owner-transfer',
-            message: `SECURITY DEFINER function ${name}${signature} must transfer ownership to ${requiredOwner} in this migration${registered === undefined ? '.' : ' and be listed in auth-fn-registry.d.'}`,
+            message: `SECURITY DEFINER function ${name}${signature} must transfer ownership to ${requiredOwner} in this migration.`,
             statement: 0,
           };
         }
@@ -1130,6 +1092,7 @@ export async function lintExtensionMigration(
 
 export interface MigrationLintCommandResult {
   readonly checked: number;
+  readonly coreChecked: number;
   readonly skipped: number;
   readonly issues: readonly { migration: string; issue: MigrationLintIssue }[];
 }
@@ -1235,6 +1198,218 @@ export interface RegistryDocument {
   readonly document: unknown;
 }
 
+export function parseCoreAuthFunctionRegistry(document: unknown): CoreAuthFunctionRegistration[] {
+  try {
+    return parseCoreAuthFunctionRegistryDocument(document);
+  } catch (error) {
+    throw new MigrationLintError(
+      error instanceof Error ? error.message : 'Invalid core Auth-function registry.',
+    );
+  }
+}
+
+async function loadCoreAuthFunctionRegistry(
+  projectRoot: string,
+): Promise<CoreAuthFunctionRegistration[]> {
+  const filePath = path.join(projectRoot, 'supabase', 'tests', 'core-auth-fn-registry.json');
+  let source: string;
+  try {
+    const fileStat = await lstat(filePath);
+    if (!fileStat.isFile())
+      throw new MigrationLintError('Core Auth-function registry must be a regular file.');
+    source = await readFile(filePath, 'utf8');
+  } catch (error) {
+    if (error instanceof MigrationLintError) throw error;
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT')
+      throw new MigrationLintError('Missing supabase/tests/core-auth-fn-registry.json.');
+    throw error;
+  }
+  try {
+    return parseCoreAuthFunctionRegistry(JSON.parse(source) as unknown);
+  } catch (error) {
+    if (error instanceof MigrationLintError) throw error;
+    throw new MigrationLintError('Invalid JSON in supabase/tests/core-auth-fn-registry.json.');
+  }
+}
+
+export async function lintCoreAuthFunctionMigrations(
+  migrations: readonly ExtensionMigration[],
+  registrations: readonly CoreAuthFunctionRegistration[],
+): Promise<CoreAuthFunctionLintIssue[]> {
+  const registered = new Map(
+    registrations.map((entry) => [
+      coreAuthFunctionIdentity(entry.schema, entry.name, entry.signature),
+      entry,
+    ]),
+  );
+  const definitions = new Map<string, number>();
+  const issues: CoreAuthFunctionLintIssue[] = [];
+  const report = (migration: string, code: string, message: string, statement: number): void => {
+    issues.push({ migration, code, message, statement });
+  };
+
+  for (const migration of migrations) {
+    if (
+      extensionSchemaFromFilename(migration.name) !== null ||
+      isMalformedExtensionMigrationName(migration.name)
+    )
+      continue;
+    if (migration.contents.trim().length === 0) continue;
+    let parseResult: ParsedSql;
+    try {
+      const parsed: unknown = await parsePostgresSql(migration.contents);
+      if (!isRecord(parsed))
+        throw new MigrationLintError('Parser returned an invalid parse result.');
+      parseResult = parsed as ParsedSql;
+    } catch {
+      report(
+        migration.name,
+        'sql-parse',
+        'PostgreSQL parser rejected this migration; source text is omitted from diagnostics.',
+        0,
+      );
+      continue;
+    }
+    if (typeof parseResult.version !== 'number' || Math.floor(parseResult.version / 10000) !== 17) {
+      report(
+        migration.name,
+        'parser-version',
+        'Migration parser is not using PostgreSQL 17 grammar.',
+        0,
+      );
+      continue;
+    }
+
+    const statements = parseResult.stmts ?? [];
+    statements.forEach((rawStatement, index) => {
+      const node = nodeVariant(rawStatement.stmt);
+      if (node === null) return;
+      const statementNumber = index + 1;
+      if (hasNamedRole(node.payload, 'auth_fn_owner')) {
+        report(
+          migration.name,
+          'legacy-auth-owner',
+          'The removed auth_fn_owner role cannot be created, granted, or assigned in core migrations.',
+          statementNumber,
+        );
+      }
+      const ownerChange = functionOwnerTransfer(rawStatement);
+      if (ownerChange?.owner === 'postgres') {
+        const identity = coreAuthFunctionIdentity(
+          ownerChange.name.split('.')[0] ?? '',
+          ownerChange.name.split('.')[1] ?? '',
+          ownerChange.signature,
+        );
+        const registration = registered.get(identity);
+        if (registration === undefined) {
+          report(
+            migration.name,
+            'unregistered-postgres-function-owner',
+            'Only fixed core Auth functions may transfer function ownership to postgres.',
+            statementNumber,
+          );
+        } else if (
+          registration.migration !== migration.name ||
+          registration.owner !== ownerChange.owner
+        ) {
+          report(
+            migration.name,
+            'core-auth-function-migration',
+            `Core Auth function ${identity} must use its registered core migration and owner.`,
+            statementNumber,
+          );
+        }
+      }
+
+      if (node.tag !== 'CreateFunctionStmt') return;
+      const qualifiedName = getDefinitionName(node.payload);
+      if (qualifiedName === null) return;
+      const nameParts = qualifiedName.split('.');
+      if (nameParts.length === 1) nameParts.unshift('public');
+      if (nameParts.length !== 2) return;
+      const signature = getFunctionSignature(node.payload);
+      const identity = coreAuthFunctionIdentity(nameParts[0] ?? '', nameParts[1] ?? '', signature);
+      const registration = registered.get(identity);
+      const options = functionOptions(node.payload);
+      const transfer = statements
+        .map((entry) => functionOwnerTransfer(entry))
+        .find((entry) => entry?.name === qualifiedName && entry.signature === signature);
+
+      if (registration !== undefined) {
+        definitions.set(identity, (definitions.get(identity) ?? 0) + 1);
+        if (registration.migration !== migration.name) {
+          report(
+            migration.name,
+            'core-auth-function-migration',
+            `Core Auth function ${identity} must be defined in ${registration.migration}.`,
+            statementNumber,
+          );
+        }
+        if (!options.securityDefiner) {
+          report(
+            migration.name,
+            'core-auth-function-definition',
+            `Core Auth function ${identity} must be SECURITY DEFINER.`,
+            statementNumber,
+          );
+        } else if (!options.emptySearchPath) {
+          report(
+            migration.name,
+            'function-search-path',
+            `SECURITY DEFINER function ${identity} must set search_path to an empty value.`,
+            statementNumber,
+          );
+        }
+        // Core migrations run through the approved postgres connection. A newly
+        // created registered function is therefore postgres-owned unless this
+        // migration explicitly changes ownership.
+        if (transfer !== undefined && transfer !== null && transfer.owner !== registration.owner) {
+          report(
+            migration.name,
+            'core-auth-function-owner',
+            `Core Auth function ${identity} must transfer ownership to ${registration.owner} in the same migration.`,
+            statementNumber,
+          );
+        }
+      } else if (
+        options.securityDefiner &&
+        (transfer === undefined || transfer === null || transfer.owner === 'postgres')
+      ) {
+        report(
+          migration.name,
+          'unregistered-postgres-function-owner',
+          'Every non-Auth SECURITY DEFINER function must transfer ownership away from the migration role.',
+          statementNumber,
+        );
+      }
+    });
+  }
+
+  for (const registration of registrations) {
+    const identity = coreAuthFunctionIdentity(
+      registration.schema,
+      registration.name,
+      registration.signature,
+    );
+    if ((definitions.get(identity) ?? 0) === 0) {
+      report(
+        registration.migration,
+        'core-auth-function-definition',
+        `Registered core Auth function ${identity} has no migration definition.`,
+        0,
+      );
+    } else if ((definitions.get(identity) ?? 0) > 1) {
+      report(
+        registration.migration,
+        'core-auth-function-definition',
+        `Registered core Auth function ${identity} has multiple migration definitions.`,
+        0,
+      );
+    }
+  }
+  return issues;
+}
+
 function registryExtensionSchema(filename: string): string {
   const match = filename.match(/^([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\.json$/);
   if (match?.[1] === undefined)
@@ -1270,31 +1445,6 @@ async function loadJsonFiles(directory: string): Promise<RegistryDocument[]> {
     }
   }
   return documents;
-}
-
-export function parseAuthFunctionRegistryDocuments(
-  documents: readonly RegistryDocument[],
-): AuthFunctionRegistration[] {
-  const registrations: AuthFunctionRegistration[] = [];
-  const seen = new Set<string>();
-  for (const source of documents) {
-    const parsed = authFunctionRegistrySchema.safeParse(source.document);
-    if (!parsed.success)
-      throw new MigrationLintError(`Invalid auth function registry shape: ${source.filename}.`);
-    for (const entry of parsed.data.functions) {
-      const qualifiedName = `${source.extensionSchema}.${entry.name}`;
-      const identity = `${qualifiedName}${entry.signature.replaceAll(' ', '')}`;
-      if (seen.has(identity))
-        throw new MigrationLintError(`Duplicate auth function registry entry: ${identity}.`);
-      seen.add(identity);
-      registrations.push({
-        name: qualifiedName,
-        signature: entry.signature.replaceAll(' ', ''),
-        reason: entry.reason,
-      });
-    }
-  }
-  return registrations;
 }
 
 export function parseExpectedGroupMemberDocuments(
@@ -1364,39 +1514,48 @@ export async function lintExtensionMigrations(
     });
     if (nameProblems.length > 0) throw new MigrationLintError(nameProblems.join('\n'));
   }
-  const registrations = parseAuthFunctionRegistryDocuments(
-    await loadJsonFiles(path.join(supabaseDirectory, 'tests', 'auth-fn-registry.d')),
-  );
+  if (await fileExists(path.join(supabaseDirectory, 'tests', 'auth-fn-registry.d')))
+    throw new MigrationLintError(
+      'supabase/tests/auth-fn-registry.d is no longer supported; use the fixed core Auth-function registry.',
+    );
+  const registrations = await loadCoreAuthFunctionRegistry(projectRoot);
   const groupRoles = parseExpectedGroupMemberDocuments(
     await loadJsonFiles(path.join(supabaseDirectory, 'tests', 'expected-group-members.d')),
   );
+  const migrationSources = await Promise.all(
+    migrations.map(async (entry) => ({
+      name: entry.name,
+      contents: await readFile(path.join(migrationsDirectory, entry.name), 'utf8'),
+    })),
+  );
+  const coreAuthIssues = await lintCoreAuthFunctionMigrations(migrationSources, registrations);
+  const issues: { migration: string; issue: MigrationLintIssue }[] = coreAuthIssues.map(
+    ({ migration, code, message, statement }) => ({
+      migration,
+      issue: { code, message, statement },
+    }),
+  );
   let checked = 0;
+  let coreChecked = 0;
   let skipped = 0;
   let knownPrimaryKeyColumns: ReadonlyMap<string, ReadonlySet<string>> = new Map();
-  const issues: { migration: string; issue: MigrationLintIssue }[] = [];
 
-  for (const entry of migrations) {
-    const result = await lintExtensionMigration(
-      {
-        name: entry.name,
-        contents: await readFile(path.join(migrationsDirectory, entry.name), 'utf8'),
-      },
-      {
-        registeredFunctions: registrations,
-        registeredGroupRoles: groupRoles,
-        knownPrimaryKeyColumns,
-      },
-    );
+  for (const [index, entry] of migrations.entries()) {
+    const result = await lintExtensionMigration(migrationSources[index] as ExtensionMigration, {
+      registeredGroupRoles: groupRoles,
+      knownPrimaryKeyColumns,
+    });
     knownPrimaryKeyColumns = result.knownPrimaryKeyColumns;
     if (!result.isExtensionMigration) {
       skipped += 1;
+      coreChecked += 1;
       continue;
     }
     checked += 1;
     for (const issue of result.issues) issues.push({ migration: entry.name, issue });
   }
 
-  return { checked, skipped, issues };
+  return { checked, coreChecked, skipped, issues };
 }
 
 export async function runMigrationLintCli(projectRoot = process.cwd()): Promise<void> {
@@ -1407,11 +1566,9 @@ export async function runMigrationLintCli(projectRoot = process.cwd()): Promise<
         `${entry.migration}: statement ${entry.issue.statement}: ${entry.issue.code}: ${entry.issue.message}\n`,
       );
     }
-    throw new MigrationLintError(
-      `${result.issues.length} extension migration policy violation(s).`,
-    );
+    throw new MigrationLintError(`${result.issues.length} migration policy violation(s).`);
   }
   process.stdout.write(
-    `Checked ${result.checked} extension migration(s); skipped ${result.skipped} core migration(s).\n`,
+    `Checked ${result.checked} extension migration(s) and core Auth ownership in ${result.coreChecked} core migration(s).\n`,
   );
 }

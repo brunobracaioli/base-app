@@ -1,7 +1,18 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
+import {
+  parseCoreAuthFunctionRegistryDocument,
+  type CoreAuthFunctionRegistryEntry,
+} from './core-auth-function-registry.js';
 
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,62}$/);
 const privilege = z.enum([
@@ -32,20 +43,6 @@ const grantsFile = z
 const groupName = identifier;
 const groupMembersFile = z.record(groupName, z.array(identifier));
 
-const authFunction = z
-  .object({
-    name: identifier,
-    signature: z.string().regex(/^\([A-Za-z0-9_,\s]*(?:\[\][A-Za-z0-9_,\s]*)*\)$/),
-    reason: z.string().trim().min(1).max(512),
-  })
-  .strict();
-
-const authRegistryFile = z
-  .object({
-    functions: z.array(authFunction),
-  })
-  .strict();
-
 type GrantRow = {
   roleName: 'anon' | 'authenticated';
   schemaName: string;
@@ -58,17 +55,20 @@ type GroupMemberRow = {
   memberName: string;
 };
 
-type AuthFunctionRow = {
+type CoreAuthFunctionRow = {
   schemaName: string;
   functionName: string;
   signature: string;
-  reason: string;
+  migration: string;
+  ownerName: string;
+  executeCallers: string[];
+  purpose: string;
 };
 
 export type PgtapRegistryRows = {
   grants: GrantRow[];
   groupMembers: GroupMemberRow[];
-  authFunctions: AuthFunctionRow[];
+  coreAuthFunctions: CoreAuthFunctionRow[];
 };
 
 function parseFile<T>(path: string, schema: z.ZodType<T>): T {
@@ -131,6 +131,48 @@ function readRegularJsonFiles(directory: string): string[] {
     .filter((path): path is string => path !== null);
 }
 
+function readCoreAuthFunctionRegistry(path: string): CoreAuthFunctionRow[] {
+  if (!lstatSync(path).isFile())
+    throw new Error(`Core Auth-function registry must be a regular file: ${path}`);
+  let document: unknown;
+  try {
+    document = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+  } catch {
+    throw new Error(`Invalid JSON registry file: ${path}`);
+  }
+  let registry: CoreAuthFunctionRegistryEntry[];
+  try {
+    registry = parseCoreAuthFunctionRegistryDocument(document);
+  } catch (error) {
+    throw new Error(
+      `Invalid core Auth-function registry in ${path}: ${error instanceof Error ? error.message : 'unknown validation error'}`,
+      { cause: error },
+    );
+  }
+  const rows: CoreAuthFunctionRow[] = [];
+  for (const fn of registry) {
+    const signature = fn.signature.replaceAll(' ', '');
+    rows.push({
+      schemaName: fn.schema,
+      functionName: fn.name,
+      signature,
+      migration: fn.migration,
+      ownerName: fn.owner,
+      executeCallers: [...fn.executeCallers],
+      purpose: fn.purpose,
+    });
+  }
+  assertUnique(
+    rows.map((fn) => `${fn.schemaName}.${fn.functionName}${fn.signature}`),
+    'core Auth function signature',
+  );
+  return rows.sort((left, right) =>
+    `${left.schemaName}.${left.functionName}${left.signature}`.localeCompare(
+      `${right.schemaName}.${right.functionName}${right.signature}`,
+    ),
+  );
+}
+
 export function loadPgtapRegistryRows(root: string): PgtapRegistryRows {
   const testDir = resolve(root, 'supabase/tests');
   const grantPath = resolve(testDir, 'grants-allowlist.json');
@@ -181,36 +223,13 @@ export function loadPgtapRegistryRows(root: string): PgtapRegistryRows {
       ),
     );
 
-  const authFunctions: AuthFunctionRow[] = [];
-  for (const path of readRegularJsonFiles(resolve(testDir, 'auth-fn-registry.d'))) {
-    const schemaName = identifier.safeParse(
-      path
-        .split('/')
-        .at(-1)
-        ?.replace(/\.json$/, ''),
-    );
-    if (!schemaName.success) throw new Error(`Invalid auth function schema file name: ${path}`);
-    const registry = parseFile(path, authRegistryFile);
-    for (const fn of registry.functions) {
-      authFunctions.push({
-        schemaName: schemaName.data,
-        functionName: fn.name,
-        signature: fn.signature,
-        reason: fn.reason,
-      });
-    }
-  }
-  assertUnique(
-    authFunctions.map((fn) => `${fn.schemaName}.${fn.functionName}${fn.signature}`),
-    'auth function signature',
-  );
-  authFunctions.sort((left, right) =>
-    `${left.schemaName}.${left.functionName}${left.signature}`.localeCompare(
-      `${right.schemaName}.${right.functionName}${right.signature}`,
-    ),
+  if (existsSync(resolve(testDir, 'auth-fn-registry.d')))
+    throw new Error('supabase/tests/auth-fn-registry.d is no longer supported.');
+  const coreAuthFunctions = readCoreAuthFunctionRegistry(
+    resolve(testDir, 'core-auth-fn-registry.json'),
   );
 
-  return { grants, groupMembers, authFunctions };
+  return { grants, groupMembers, coreAuthFunctions };
 }
 
 export function generatePgtapRegistrySql(root: string): string {
@@ -231,11 +250,14 @@ export function generatePgtapRegistrySql(root: string): string {
   member_name text not null,
   primary key (group_name, member_name)
 );`,
-    `create table test_support.expected_auth_fn_registry (
+    `create table test_support.expected_core_auth_fn_registry (
   schema_name text not null,
   function_name text not null,
   signature text not null,
-  reason text not null,
+  migration text not null,
+  owner_name text not null check (owner_name = 'postgres'),
+  execute_callers text[] not null,
+  purpose text not null,
   primary key (schema_name, function_name, signature)
 );`,
   ];
@@ -257,12 +279,12 @@ export function generatePgtapRegistrySql(root: string): string {
         .join(',\n')};`,
     );
   }
-  if (rows.authFunctions.length > 0) {
+  if (rows.coreAuthFunctions.length > 0) {
     statements.push(
-      `insert into test_support.expected_auth_fn_registry (schema_name, function_name, signature, reason) values\n${rows.authFunctions
+      `insert into test_support.expected_core_auth_fn_registry (schema_name, function_name, signature, migration, owner_name, execute_callers, purpose) values\n${rows.coreAuthFunctions
         .map(
           (fn) =>
-            `  (${sqlText(fn.schemaName)}, ${sqlText(fn.functionName)}, ${sqlText(fn.signature)}, ${sqlText(fn.reason)})`,
+            `  (${sqlText(fn.schemaName)}, ${sqlText(fn.functionName)}, ${sqlText(fn.signature)}, ${sqlText(fn.migration)}, ${sqlText(fn.ownerName)}, ${sqlTextArray(fn.executeCallers)}, ${sqlText(fn.purpose)})`,
         )
         .join(',\n')};`,
     );
@@ -287,7 +309,7 @@ function main(): void {
       output: 'supabase/.temp/expected-registry.sql',
       grants: rows.grants.length,
       groupMembers: rows.groupMembers.length,
-      authFunctions: rows.authFunctions.length,
+      coreAuthFunctions: rows.coreAuthFunctions.length,
     }) + '\n',
   );
 }

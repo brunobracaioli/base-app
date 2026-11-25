@@ -11,8 +11,9 @@ const routine = (
   `create or replace function ${name}(${args}) returns void language plpgsql ${security} set search_path = ${searchPath} as $$ begin ${insert} end; $$;`;
 
 describe('core SQL audit write boundaries', () => {
-  it('allows the two signatures already required by the specifications', async () => {
+  it('allows the fixed audited core function signatures', async () => {
     expect(await lintAuditWrites(routine())).toEqual([]);
+    expect(await lintAuditWrites(routine('ops.purge_unconfirmed_users'))).toEqual([]);
     expect(
       await lintAuditWrites(
         routine(
@@ -31,6 +32,9 @@ describe('core SQL audit write boundaries', () => {
     routine('ops.purge_expired', 'security invoker'),
     routine('ops.purge_expired', 'security definer', 'public'),
     routine('ops.purge_expired', 'security definer', "''", 'unexpected text'),
+    routine('ops.record_audit_event'),
+    routine('ops.purge_unconfirmed_users', 'security definer', "''", 'p_count integer'),
+    routine('ops.purge_unconfirmed_users').replace('returns void', 'returns integer'),
     `${routine()}\n${insert}`,
     `/* create function ops.purge_expired() returns void language plpgsql security definer set search_path = '' as $$ */\n${insert}\n/* $$; */`,
   ])('rejects writes outside the approved function boundary: %s', async (source) => {
