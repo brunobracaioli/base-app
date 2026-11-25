@@ -1,13 +1,21 @@
 import { stringify } from 'yaml';
 import * as z from 'zod';
 
-import { coreEndpoints, baseResponseSchemas, RateLimitPolicySchema } from './endpoints.js';
+import {
+  coreEndpoints,
+  baseResponseSchemas,
+  RateLimitPolicySchema,
+  type EndpointResponseHeader,
+} from './endpoints.js';
 import { extensionEndpoints } from './extensions/index.js';
 import type { EndpointContract } from './endpoints.js';
 
 type OpenApiResponse = {
   readonly description: string;
   readonly content?: OpenApiContent;
+  readonly headers?: Readonly<
+    Record<string, { readonly description: string; readonly schema: Readonly<Record<string, unknown>> }>
+  >;
 };
 
 type OpenApiContent = Readonly<
@@ -88,6 +96,17 @@ function problemContent(): OpenApiContent {
   };
 }
 
+function toOpenApiHeaders(
+  headers: Readonly<Record<string, EndpointResponseHeader>>,
+): NonNullable<OpenApiResponse['headers']> {
+  return Object.fromEntries(
+    Object.entries(headers).map(([name, header]) => [
+      name,
+      { description: header.description, schema: toOpenApiSchema(header.schema) },
+    ]),
+  );
+}
+
 function buildOperation(endpoint: EndpointContract): OpenApiOperation {
   const hasResponseSchema =
     endpoint.responseSchemaName !== undefined && endpoint.responseSchema !== undefined;
@@ -103,6 +122,9 @@ function buildOperation(endpoint: EndpointContract): OpenApiOperation {
 
   const successResponse: OpenApiResponse = {
     description: endpoint.successDescription,
+    ...(endpoint.successHeaders !== undefined
+      ? { headers: toOpenApiHeaders(endpoint.successHeaders) }
+      : {}),
     ...(hasResponseSchema && endpoint.responseSchemaName !== undefined
       ? { content: responseContent(endpoint.responseSchemaName) }
       : {}),
@@ -115,6 +137,7 @@ function buildOperation(endpoint: EndpointContract): OpenApiOperation {
     responses[String(problem.status)] = {
       description: problem.description,
       content: problemContent(),
+      ...(problem.headers !== undefined ? { headers: toOpenApiHeaders(problem.headers) } : {}),
     };
   }
 
@@ -201,9 +224,9 @@ export function buildOpenApiDocument(
     openapi: '3.1.0',
     info: {
       title: 'base-app API',
-      version: '1.1.0',
+      version: '1.2.0',
       description:
-        'Compatible additive revision: adds authenticated profile and consent operations without changing existing operations.',
+        'Compatible additive revision: adds public app configuration and server gate responses for existing operations.',
     },
     servers: [{ url: '/api' }],
     paths,

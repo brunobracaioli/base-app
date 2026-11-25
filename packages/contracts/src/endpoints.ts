@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { AppConfigResponse } from './app-config.js';
 import { HealthResponseSchema } from './health.schema.js';
 import { Me, UpdateProfileBody } from './identity.js';
 import { ProblemDetailsSchema } from './problem.schema.js';
@@ -15,6 +16,29 @@ export const RateLimitPolicySchema = z.strictObject({
 
 export type RateLimitPolicy = z.infer<typeof RateLimitPolicySchema>;
 
+export type EndpointResponseHeader = {
+  readonly description: string;
+  readonly schema: z.ZodType;
+};
+
+const appConfigGateProblemResponses = [
+  {
+    status: 426,
+    description: 'The installed app version is below the minimum supported version.',
+  },
+  {
+    status: 503,
+    description:
+      'The app is in maintenance mode, or authentication or rate limiting is unavailable.',
+    headers: {
+      'Retry-After': {
+        description: 'For app.maintenance, retry after this many seconds.',
+        schema: z.literal('60'),
+      },
+    },
+  },
+] as const;
+
 export type EndpointContract = {
   readonly method: 'get' | 'post' | 'patch' | 'delete';
   readonly path: `/${string}`;
@@ -24,6 +48,7 @@ export type EndpointContract = {
   readonly rateLimit: RateLimitPolicy;
   readonly successStatus: number;
   readonly successDescription: string;
+  readonly successHeaders?: Readonly<Record<string, EndpointResponseHeader>>;
   readonly requestBody?: {
     readonly schemaName: string;
     readonly schema: z.ZodType;
@@ -35,6 +60,7 @@ export type EndpointContract = {
   readonly problemResponses?: readonly {
     readonly status: number;
     readonly description: string;
+    readonly headers?: Readonly<Record<string, EndpointResponseHeader>>;
   }[];
   readonly rateLimitErrorStatuses: readonly number[];
 };
@@ -62,6 +88,31 @@ export const coreEndpoints = [
   },
   {
     method: 'get',
+    path: '/v1/app-config',
+    operationId: 'getAppConfig',
+    summary: 'Read the public remote app configuration',
+    security: [],
+    rateLimit: {
+      key: 'ip',
+      limit: 60,
+      windowSec: 60,
+      ipLimit: 60,
+      onStoreFailure: 'open',
+    },
+    successStatus: 200,
+    successDescription: 'The current public app configuration.',
+    successHeaders: {
+      'Cache-Control': {
+        description: 'Shared cache policy for remote app configuration.',
+        schema: z.literal('public, s-maxage=60, stale-while-revalidate=60'),
+      },
+    },
+    responseSchemaName: 'AppConfigResponse',
+    responseSchema: AppConfigResponse,
+    rateLimitErrorStatuses: [429],
+  },
+  {
+    method: 'get',
     path: '/v1/me',
     operationId: 'getMe',
     summary: 'Read the authenticated user profile and consent state',
@@ -78,12 +129,12 @@ export const coreEndpoints = [
     responseSchemaName: 'Me',
     responseSchema: Me,
     problemResponses: [
+      ...appConfigGateProblemResponses,
       {
         status: 401,
         description:
           'The authentication token is missing, invalid, expired, or belongs to a deleted account.',
       },
-      { status: 503, description: 'Authentication or rate limiting is unavailable.' },
     ],
     rateLimitErrorStatuses: [429],
   },
@@ -111,12 +162,12 @@ export const coreEndpoints = [
     responseSchema: Me,
     problemResponses: [
       { status: 400, description: 'The request body failed validation.' },
+      ...appConfigGateProblemResponses,
       {
         status: 401,
         description:
           'The authentication token is missing, invalid, expired, or belongs to a deleted account.',
       },
-      { status: 503, description: 'Authentication or rate limiting is unavailable.' },
     ],
     rateLimitErrorStatuses: [429],
   },
@@ -142,6 +193,7 @@ export const coreEndpoints = [
     },
     problemResponses: [
       { status: 400, description: 'The request body failed validation.' },
+      ...appConfigGateProblemResponses,
       {
         status: 401,
         description:
@@ -151,13 +203,13 @@ export const coreEndpoints = [
         status: 409,
         description: 'The submitted legal document version is no longer current.',
       },
-      { status: 503, description: 'Authentication or rate limiting is unavailable.' },
     ],
     rateLimitErrorStatuses: [429],
   },
 ] as const satisfies readonly EndpointContract[];
 
 export const baseResponseSchemas = {
+  AppConfigResponse,
   HealthResponse: HealthResponseSchema,
   Me,
   ProblemDetails: ProblemDetailsSchema,

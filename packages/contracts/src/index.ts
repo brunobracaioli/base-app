@@ -1,5 +1,21 @@
 export { HealthResponseSchema } from './health.schema.js';
 export type { HealthResponse } from './health.schema.js';
+export {
+  AppConfigResponse,
+  LegalSetting,
+  MaintenanceSetting,
+  Platform,
+  SemVer,
+  VersionsSetting,
+} from './app-config.js';
+export type {
+  AppConfigResponseValue,
+  LegalSettingValue,
+  MaintenanceSettingValue,
+  PlatformValue,
+  SemVerValue,
+  VersionsSettingValue,
+} from './app-config.js';
 export { Locale, Me, UpdateProfileBody } from './identity.js';
 export type { MeResponse, UpdateProfileBodyInput } from './identity.js';
 export {
