@@ -569,6 +569,7 @@ export function createDefineRoute(dependencies: RouteDependencies) {
       const now = dependencies.now();
       const responseHeaders = new Headers();
       let outcome = 'error';
+      let authenticatedUserId: string | undefined;
       let idempotencyLease:
         | {
             readonly userId: string;
@@ -630,6 +631,7 @@ export function createDefineRoute(dependencies: RouteDependencies) {
           }
           if (!verification.ok) throw authFailureProblem(verification.error);
           auth = verification.value;
+          authenticatedUserId = verification.value.userId;
         }
 
         await enforceRateLimit(dependencies, {
@@ -796,6 +798,17 @@ export function createDefineRoute(dependencies: RouteDependencies) {
           metric('api.request.duration_ms', performance.now() - startedAt, {
             operation_id: definition.operationId,
           });
+          try {
+            dependencies.logger.info('API request completed', {
+              route: definition.operationId,
+              requestId,
+              clientRequestId,
+              outcome,
+              ...(authenticatedUserId === undefined ? {} : { userId: authenticatedUserId }),
+            });
+          } catch {
+            // Completion logging must not affect the HTTP response.
+          }
         }
       }
     };

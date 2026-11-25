@@ -153,6 +153,127 @@ describe('defineRoute HTTP pipeline', () => {
     expect(response.headers.get('x-request-id')).toBe(TEST_REQUEST_ID);
   });
 
+  it('logs completion with verified identity and safe correlation fields only', async () => {
+    let rejectAuthentication = false;
+    const test = createTestRouteDependencies({
+      overrides: {
+        async authenticateUser() {
+          if (rejectAuthentication) {
+            return { ok: false, error: { code: 'auth.invalid_token' } };
+          }
+          return {
+            ok: true,
+            value: {
+              ...createTestUserAuthContext(TEST_USER_A),
+              email: 'private-user@example.test',
+            },
+          };
+        },
+      },
+    });
+    const route = createDefineRoute(test.dependencies)({
+      operationId: 'getCompletionLoggingTest',
+      auth: { kind: 'user' },
+      rateLimit: userRateLimit,
+      output: outputSchema,
+      handler: async () => ({ ok: true }),
+    });
+    const makeRequest = () =>
+      new Request('https://app.example/api/v1/test', {
+        headers: {
+          Authorization: 'Bearer unlogged-auth-token',
+          'x-real-ip': '198.51.100.12',
+          'x-request-id': '99999999-9999-4999-8999-999999999999',
+        },
+      });
+
+    const success = await route(makeRequest());
+    expect(success.status).toBe(200);
+
+    test.rateLimiter.result = {
+      allowed: false,
+      limit: 30,
+      remaining: 0,
+      resetAtMs: TEST_NOW.getTime() + 1_000,
+    };
+    const rejectedAfterAuthentication = await route(makeRequest());
+    expect(rejectedAfterAuthentication.status).toBe(429);
+
+    rejectAuthentication = true;
+    const rejectedBeforeAuthentication = await route(makeRequest());
+    expect(rejectedBeforeAuthentication.status).toBe(401);
+
+    const completionLogs = test.logs.filter((entry) => entry.message === 'API request completed');
+    expect(completionLogs).toHaveLength(3);
+    expect(completionLogs[0]?.fields).toEqual({
+      route: 'getCompletionLoggingTest',
+      requestId: TEST_REQUEST_ID,
+      clientRequestId: '99999999-9999-4999-8999-999999999999',
+      outcome: 'success',
+      userId: TEST_USER_A,
+    });
+    expect(completionLogs[1]?.fields).toEqual({
+      route: 'getCompletionLoggingTest',
+      requestId: TEST_REQUEST_ID,
+      clientRequestId: '99999999-9999-4999-8999-999999999999',
+      outcome: 'rejected',
+      userId: TEST_USER_A,
+    });
+    expect(completionLogs[2]?.fields).toEqual({
+      route: 'getCompletionLoggingTest',
+      requestId: TEST_REQUEST_ID,
+      clientRequestId: '99999999-9999-4999-8999-999999999999',
+      outcome: 'rejected',
+    });
+    const serializedLogs = JSON.stringify(completionLogs);
+    expect(serializedLogs).not.toContain('unlogged-auth-token');
+    expect(serializedLogs).not.toContain('private-user@example.test');
+    expect(serializedLogs).not.toContain('198.51.100.12');
+  });
+
+  it('does not let a completion log sink failure alter the route response or recurse', async () => {
+    const test = createTestRouteDependencies();
+    const dependencies: RouteDependencies = {
+      ...test.dependencies,
+      logger: {
+        info() {
+          throw new Error('completion log sink unavailable');
+        },
+        warn() {},
+        error() {},
+      },
+    };
+    const route = createDefineRoute(dependencies)({
+      operationId: 'getCompletionLogFailureTest',
+      auth: { kind: 'public' },
+      rateLimit: ipLimit,
+      output: outputSchema,
+      handler: async () => ({ ok: true }),
+    });
+
+    const response = await route(new Request('https://app.example/'));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(test.logs).toEqual([]);
+  });
+
+  it('keeps the health route exempt from completion logs', async () => {
+    const test = createTestRouteDependencies();
+    const route = createDefineRoute(test.dependencies)({
+      operationId: 'getHealth',
+      auth: { kind: 'public' },
+      rateLimit: ipLimit,
+      output: outputSchema,
+      handler: async () => ({ ok: true }),
+    });
+
+    const response = await route(new Request('https://app.example/'));
+
+    expect(response.status).toBe(200);
+    expect(test.logs).toEqual([]);
+  });
+
   it('shares the route IP bucket across authenticated users at the same IP', async () => {
     const test = createTestRouteDependencies({
       users: { tokenA: TEST_USER_A, tokenB: TEST_USER_B },
