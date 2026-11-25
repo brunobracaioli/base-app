@@ -18,11 +18,12 @@
   "scripts": {
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "pnpm --filter @base-app/config build && vitest run",
     "build": "tsc --noEmit false --outDir dist",
-    "contracts:openapi": "tsc --noEmit false --outDir dist && node scripts/generate-openapi.mjs"
+    "contracts:openapi": "pnpm --filter @base-app/config build && tsc --noEmit false --outDir dist && node scripts/generate-openapi.mjs"
   },
   "dependencies": {
+    "@base-app/config": "workspace:*",
     "yaml": "2.9.1",
     "zod": "4.6.7"
   }
