@@ -65,3 +65,31 @@ permissão de ATT (App Tracking Transparency) e não registra token de push.
   com projeto configurado e credencial de upload externa.
 - Sem login por terceiros, "Sign in with Apple" não é exigido; sem rastreamento, o manifesto de
   privacidade e o formulário Data Safety ficam curtos (how-to de publicação).
+
+## Dependências transitivas — verificação de 2026-11-25
+
+O OSV encontrou oito ocorrências vulneráveis no grafo Expo/EAS. Foram fixadas,
+com versões estáveis conferidas no npm e pins explícitos no workspace/lockfile:
+
+| Dependência | Versão corrigida | Referência |
+| --- | --- | --- |
+| `diff@7` | `9.0.0` | [GHSA-73rr-hh4g-fpgx](https://osv.dev/vulnerability/GHSA-73rr-hh4g-fpgx) |
+| `glob@10/13` | `14.0.6` | [GHSA-3g3m-2fjr-6pw4](https://osv.dev/vulnerability/GHSA-3g3m-2fjr-6pw4) |
+| `minimatch@9/10` | `11.0.9` | [GHSA-g3hv-75wg-m249](https://osv.dev/vulnerability/GHSA-g3hv-75wg-m249) |
+| `ts-deepmerge@6` | `8.0.0` | [GHSA-87mf-gv2c-c62c](https://osv.dev/vulnerability/GHSA-87mf-gv2c-c62c) |
+| `uuid@7/8` | `11.1.1` | [GHSA-w5hq-g745-h8pq](https://osv.dev/vulnerability/GHSA-w5hq-g745-h8pq) |
+
+`uuid@11.1.1` é a última versão estável da linha CommonJS compatível com os
+consumidores legados; a versão global mais recente, 14.0.3, é ESM. Os outros
+pins são os estáveis mais recentes consultados e respeitam a idade mínima de
+24 horas. Não foram alteradas as versões do Expo SDK nem do React Native.
+
+EAS CLI 27.11.0 ainda importa o export default antigo de `ts-deepmerge`. O patch
+versionado em `patches/eas-cli@27.11.0.patch` troca somente essa importação e
+chamada pelo export nomeado `merge` da versão corrigida. Deve ser removido
+quando o EAS adotar a API atual. Isso não dispensa builds EAS reais.
+
+`react-dom@19.3.0` fica explícito para corresponder ao React 19.3.0 exigido pelo
+SDK. Permanece o aviso de peer do loader legado `@expo/require-utils@55`, que
+anuncia TypeScript 5; o projeto usa TypeScript 6.0.3. A validação local de
+configuração não substitui o aceite de build nativo/hospedado.
