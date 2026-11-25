@@ -9,6 +9,7 @@
     "lint": "eslint src scripts next.config.ts instrumentation.ts sentry.server.config.ts sentry.edge.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/test.mjs",
+    "app-config:operator:test": "node scripts/test.mjs scripts/app-config/operation.test.ts",
     "headers:check": "node scripts/check-security-headers.mjs",
     "db:types": "node scripts/db-types.mjs",
     "site-env:check": "tsx scripts/validate-site-env.ts"

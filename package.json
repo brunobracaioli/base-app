@@ -12,6 +12,7 @@
     "format:check": "prettier --check .",
     "architecture:check": "node packages/tooling/src/architecture/run-dependency-cruiser.mjs",
     "contracts:openapi": "pnpm --filter @base-app/contracts contracts:openapi",
+    "app-config:operator:test": "pnpm --filter web app-config:operator:test",
     "ci:local": "node --experimental-strip-types packages/tooling/src/ci/local-ci.ts",
     "security:doctor": "tsx packages/tooling/src/security/security-doctor.ts",
     "supabase:config": "tsx packages/tooling/src/guards/supabase-config-cli.ts",
