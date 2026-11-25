@@ -1,4 +1,5 @@
 import { parseServerEnv } from '../env/index';
+import { verifyAccessToken } from '../auth';
 import { createLogger } from '../observability/logger';
 import productConfig from '@base-app/config/product.config';
 import { serverExtensionComposition } from '../composition/index';
@@ -63,11 +64,12 @@ export function createDefaultRouteDependencies(
     logger,
     rateLimiter: new LazyEnvironmentRateLimiter(),
     idempotencyStore: new UnavailableIdempotencyStore(),
-    authenticateUser: async () => null,
+    authenticateUser: async (token) => verifyAccessToken(token),
     checkVersionAndMaintenance: async () => ({ allow: true }),
     authorizationPolicies: serverExtensionComposition.authorizationPolicies,
-    loadFreshRoles: async () => {
-      throw new Error('Fresh role lookup is unavailable.');
+    loadFreshRoles: async (auth) => {
+      const { getCoreRuntime } = await import('../composition/core');
+      return getCoreRuntime().loadFreshRoles(auth);
     },
     recordSecurityEvent: async () => {
       throw new Error('Security audit writer is unavailable.');

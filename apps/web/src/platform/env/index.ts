@@ -16,6 +16,36 @@ const upstashUrlSchema = z.url().refine((value) => {
   }
 }, 'UPSTASH_REDIS_REST_URL must be an HTTPS origin without embedded credentials or query.');
 
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (normalized === 'localhost' || normalized.endsWith('.localhost')) return true;
+  if (normalized === '::1') return true;
+  const ipv4 = normalized.split('.');
+  return (
+    ipv4.length === 4 &&
+    ipv4[0] === '127' &&
+    ipv4.every((octet) => /^(?:0|[1-9]\d{0,2})$/.test(octet) && Number(octet) <= 255)
+  );
+}
+
+const supabaseUrlSchema = z.url().refine((value) => {
+  try {
+    const url = new URL(value);
+    const originOnly =
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      (url.pathname === '' || url.pathname === '/');
+    return (
+      originOnly &&
+      (url.protocol === 'https:' || (url.protocol === 'http:' && isLoopbackHostname(url.hostname)))
+    );
+  } catch {
+    return false;
+  }
+}, 'SUPABASE_URL must be an HTTPS origin or a loopback HTTP origin in development/test.');
+
 const databaseUrlSchema = z.url().refine((value) => {
   const sslOverrideParameters = new Set(['ssl', 'sslmode', 'sslcert', 'sslkey', 'sslrootcert']);
   try {
@@ -40,6 +70,7 @@ export const SERVER_ENV_SCHEMA = z
     VERCEL_ENV: z.enum(['development', 'preview', 'production']).optional(),
     VERCEL_URL: hostSchema.optional(),
     VERCEL_BRANCH_URL: hostSchema.optional(),
+    SUPABASE_URL: supabaseUrlSchema.optional(),
     DATABASE_URL: databaseUrlSchema.optional(),
     DATABASE_CA_CERT: z.string().min(1).optional(),
     UPSTASH_REDIS_REST_URL: upstashUrlSchema.optional(),
@@ -68,7 +99,32 @@ export const SERVER_ENV_SCHEMA = z
       message: 'Both DATABASE_URL and DATABASE_CA_CERT must be configured together.',
       path: ['DATABASE_CA_CERT'],
     },
-  );
+  )
+  .superRefine((environment, context) => {
+    const supabaseUrl = environment.SUPABASE_URL;
+    if (!supabaseUrl) return;
+
+    let protocol: string;
+    try {
+      protocol = new URL(supabaseUrl).protocol;
+    } catch {
+      return;
+    }
+    if (protocol !== 'http:') return;
+
+    const localRuntime =
+      environment.VERCEL_ENV === 'development' ||
+      ((environment.NODE_ENV === 'development' || environment.NODE_ENV === 'test') &&
+        environment.VERCEL_ENV !== 'preview' &&
+        environment.VERCEL_ENV !== 'production');
+    if (!localRuntime) {
+      context.addIssue({
+        code: 'custom',
+        message: 'SUPABASE_URL may use HTTP only in development or test.',
+        path: ['SUPABASE_URL'],
+      });
+    }
+  });
 
 export type ServerEnv = z.infer<typeof SERVER_ENV_SCHEMA>;
 
@@ -100,6 +156,12 @@ export function validateRuntimeEnvironment(
     throw new Error(
       'Database URL and TLS CA certificate are required for Vercel preview and production.',
     );
+  }
+  if (
+    (parsed.VERCEL_ENV === 'preview' || parsed.VERCEL_ENV === 'production') &&
+    !parsed.SUPABASE_URL
+  ) {
+    throw new Error('SUPABASE_URL is required for Vercel preview and production.');
   }
   return parsed;
 }

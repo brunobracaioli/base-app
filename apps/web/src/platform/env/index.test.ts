@@ -10,6 +10,45 @@ describe('server environment validation', () => {
     expect(parseServerEnv(baseEnvironment).APP_HOST).toBe('localhost:3000');
   });
 
+  it('accepts a trusted Supabase HTTPS origin and limits HTTP to loopback development/test', () => {
+    expect(
+      parseServerEnv({ ...baseEnvironment, SUPABASE_URL: 'https://project.supabase.co' })
+        .SUPABASE_URL,
+    ).toBe('https://project.supabase.co');
+    expect(
+      parseServerEnv({
+        ...baseEnvironment,
+        NODE_ENV: 'test',
+        SUPABASE_URL: 'http://127.0.0.1:54421',
+      }).SUPABASE_URL,
+    ).toBe('http://127.0.0.1:54421');
+    expect(() =>
+      parseServerEnv({
+        ...baseEnvironment,
+        NODE_ENV: 'test',
+        SUPABASE_URL: 'http://supabase.example',
+      }),
+    ).toThrow();
+    expect(() =>
+      parseServerEnv({
+        ...baseEnvironment,
+        NODE_ENV: 'production',
+        SUPABASE_URL: 'http://127.0.0.1:54421',
+      }),
+    ).toThrow(/development or test/);
+  });
+
+  it('rejects Supabase URLs containing credentials, paths, queries, or fragments', () => {
+    for (const SUPABASE_URL of [
+      'https://user:secret@project.supabase.co',
+      'https://project.supabase.co/auth/v1',
+      'https://project.supabase.co?token=secret',
+      'https://project.supabase.co/#fragment',
+    ]) {
+      expect(() => parseServerEnv({ ...baseEnvironment, SUPABASE_URL })).toThrow();
+    }
+  });
+
   it('requires Redis REST URLs to use HTTPS without embedded credentials or query strings', () => {
     expect(() =>
       parseServerEnv({
@@ -105,7 +144,18 @@ describe('server environment validation', () => {
         UPSTASH_REDIS_REST_TOKEN: 'generated-test-only-token',
         DATABASE_URL: 'postgresql://db.example:6543/app',
         DATABASE_CA_CERT: 'test-only-certificate',
+        SUPABASE_URL: 'https://project.supabase.co',
       }).VERCEL_ENV,
     ).toBe('preview');
+    expect(() =>
+      validateRuntimeEnvironment({
+        ...baseEnvironment,
+        VERCEL_ENV: 'preview',
+        UPSTASH_REDIS_REST_URL: 'https://redis.example',
+        UPSTASH_REDIS_REST_TOKEN: 'generated-test-only-token',
+        DATABASE_URL: 'postgresql://db.example:6543/app',
+        DATABASE_CA_CERT: 'test-only-certificate',
+      }),
+    ).toThrow(/SUPABASE_URL is required/);
   });
 });

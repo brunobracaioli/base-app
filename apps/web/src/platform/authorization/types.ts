@@ -1,3 +1,5 @@
+import type { DbClaims } from '../db/claims';
+
 export type AuthorizationRequest = {
   readonly auth: UserAuthContext;
   readonly host: string;
@@ -16,10 +18,14 @@ export type AuthorizationPolicy = (request: AuthorizationRequest) => Promise<Aut
 export type UserAuthContext = {
   readonly kind: 'user';
   readonly userId: string;
+  readonly sessionId: string;
+  readonly aal: 'aal1' | 'aal2';
+  readonly email: string | null;
   readonly isAnonymous: boolean;
   readonly appRoles: readonly string[];
   readonly providers: readonly string[];
-  readonly amr: readonly { readonly timestamp: number }[];
+  readonly amr: readonly { readonly method: string; readonly timestamp: number }[];
+  readonly dbClaims: DbClaims;
 };
 
 export type WebhookAuthContext = {
