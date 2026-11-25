@@ -32,6 +32,8 @@ function testRequest(headerToken: string, secondToken: string): Request {
 
 describe('public access-token verifier through the protected route pipeline', () => {
   it('matches default authentication and verifies a second body token through the public facade', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(TEST_NOW);
     vi.resetModules();
     vi.stubEnv('APP_HOST', 'app.example');
     vi.stubEnv('NODE_ENV', 'test');
@@ -90,7 +92,7 @@ describe('public access-token verifier through the protected route pipeline', ()
       const { createDefaultRouteDependencies } = runtime;
       const { createDefineRoute } = http;
       const { HttpProblem } = problem;
-      const nowSec = Math.floor(Date.now() / 1_000);
+      const nowSec = TEST_NOW.getTime() / 1_000;
 
       async function signToken(
         userId: string,
@@ -256,6 +258,7 @@ describe('public access-token verifier through the protected route pipeline', ()
       vi.doUnmock('../observability/logger');
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
+      vi.useRealTimers();
       vi.resetModules();
     }
   });
