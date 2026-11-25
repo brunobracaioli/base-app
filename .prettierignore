@@ -4,6 +4,8 @@ README.md
 docs/
 .git/
 node_modules/
+.next/
+apps/web/next-env.d.ts
 .turbo/
 coverage/
 dist/

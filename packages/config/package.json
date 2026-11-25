@@ -6,21 +6,28 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "require": "./src/index.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
     },
     "./product.config": {
       "types": "./src/product.config.ts",
-      "default": "./src/product.config.ts"
+      "require": "./src/product.config.ts",
+      "import": "./dist/src/product.config.js",
+      "default": "./dist/src/product.config.js"
     },
     "./extensions": {
       "types": "./src/extensions.ts",
-      "default": "./src/extensions.ts"
+      "require": "./src/extensions.ts",
+      "import": "./dist/src/extensions.js",
+      "default": "./dist/src/extensions.js"
     }
   },
   "scripts": {
+    "build": "tsc --noEmit false --outDir dist",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --exclude '**/dist/**'"
   },
   "dependencies": {
     "zod": "4.6.7"
