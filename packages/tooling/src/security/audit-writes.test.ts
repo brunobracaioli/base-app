@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lintAuditWrites } from './audit-writes.js';
+import { lintAuditWrites } from '../guards/audit-writes.js';
 
 const insert = "insert into audit.events (action) values ('test.event');";
 const routine = (
