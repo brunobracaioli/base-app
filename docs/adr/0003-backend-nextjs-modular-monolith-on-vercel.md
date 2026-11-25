@@ -116,3 +116,38 @@ local passou a reportar `ƒ /`. No servidor otimizado local, `headers:check` con
 da resposta CSP corresponde ao nonce dos scripts inline e que os headers estão presentes em
 health, página e asset estático. Isso é teste HTTP local; não substitui navegador nem preview
 hospedado.
+
+### Evidência do checker de request-target bruto (2026-11-25)
+
+`apps/web/scripts/check-raw-edge-requests.mjs` envia request-targets com TCP para uma origem
+HTTP de loopback, sem deixar o cliente normalizar o caminho. O comando exige status 404 e os cinco
+headers de segurança para a matriz de bypass; seu JSON distingue `pre-proxy-normalization`,
+`proxy-rejection` e `proxy-forwarded`, inclui `Location` e `Cache-Control`, e informa a presença de
+cada header de segurança, do nonce CSP e do request ID sem imprimir os valores dinâmicos. Resultado
+incompleto ou incompatível com o critério encerra com código 1.
+
+No build otimizado local de `next@16.4.6`, sob Node `24.22.3`, `CI=1` e ambiente sem credenciais,
+o servidor do template com `edgeExtensions` vazio foi exercitado em `127.0.0.1:48621`:
+
+- `/api/v1/health` no `APP_HOST` respondeu 200, com CSP nonce, request ID e os cinco headers; um
+  host desconhecido respondeu `edge.not_found` 404 com os cinco headers.
+- `//panel` e `/foo\\bar` responderam 308 antes do Proxy (`Location: /panel` e `/foo/bar`) sem
+  `X-Request-Id` nem qualquer dos cinco headers.
+- `/%2e` chegou ao Proxy como a rota `/` e respondeu 200. `/%2e%2e/api/v1/health` foi normalizado
+  para a rota de health e respondeu 200. `/%2e%2e/panel` respondeu 404 de rota do Next, com CSP
+  nonce; `/%2f` e `/%5c` foram rejeitados pelo Proxy com `edge.not_found` 404 e headers.
+- O checker terminou com `acceptanceStatus: failed` e código 1; as duas respostas pré-Proxy e os
+  dois caminhos normalizados para respostas 200 não foram contados como sucesso.
+
+Para cobrir isolamento de prefixo no Proxy executável, um segundo build temporário de produção
+registrou somente uma extensão de fixture (`fixture.invalid:48622`, prefixo `/fixture-panel`), sem
+alterar o registro vazio do template. No servidor em `127.0.0.1:48622`, a rota do prefixo e a
+variante `/%2e%2e/fixture-panel/...` normalizada foram rejeitadas em `APP_HOST` com
+`edge.not_found`; foram encaminhadas no host da fixture com CSP nonce; uma rota fora do prefixo
+foi rejeitada com `edge.not_found`. As cinco asserções de prefixo passaram. O checker permaneceu
+com resultado geral `failed` devido à matriz exata de bypass. Este fixture comprova o caminho do
+Proxy com uma extensão registrada, não afirma que o template tenha uma extensão ativa.
+
+Esta evidência mantém pendente a decisão do dono sobre o requisito exato 404/headers para respostas
+que o Next normaliza antes do Proxy ou redireciona sem headers. Não valida ingress anterior ao Next,
+navegador nem preview hospedado.
