@@ -2,6 +2,10 @@ begin;
 set local search_path = test_support, extensions, public;
 select no_plan();
 
+-- Isolate the alert fixture and hold the relation lock until rollback so a
+-- concurrent cron run cannot change this test's timestamps mid-assertion.
+truncate table ops.alerts;
+
 insert into cron.job_run_details (username, status, start_time)
 values ('ops', 'failed', clock_timestamp());
 
@@ -76,10 +80,13 @@ select ok(
   'new alerts persist local first-seen and last-seen timestamps only'
 );
 
-select set_config('test.alert_first_seen_at',
-  (select min(first_seen_at)::text from ops.alerts), true);
-select set_config('test.alert_last_seen_at',
-  (select max(last_seen_at)::text from ops.alerts), true);
+create temporary table expected_alert_timestamps on commit drop as
+select code, first_seen_at, last_seen_at
+from ops.alerts
+where code in (
+  'cron_failures_24h', 'purge_expired_missing', 'audit_operator_volume',
+  'audit_system_volume', 'audit_webhook_volume', 'operator_config_unlisted'
+);
 select lives_ok('select ops.check_signals()',
   'check_signals can re-evaluate persisted alerts without an external notifier');
 select is(
@@ -92,15 +99,12 @@ select is(
   'repeated signal checks keep one row per alert code'
 );
 select ok(
-  (select bool_and(
-      first_seen_at = current_setting('test.alert_first_seen_at', true)::timestamptz
-      and last_seen_at >= current_setting('test.alert_last_seen_at', true)::timestamptz
+  (select count(*) = 6 and bool_and(
+      alert.first_seen_at = expected.first_seen_at
+      and alert.last_seen_at >= expected.last_seen_at
     )
-   from ops.alerts
-   where code in (
-     'cron_failures_24h', 'purge_expired_missing', 'audit_operator_volume',
-     'audit_system_volume', 'audit_webhook_volume', 'operator_config_unlisted'
-   )),
+   from expected_alert_timestamps expected
+   join ops.alerts alert using (code)),
   'repeated signals preserve first-seen and refresh last-seen timestamps'
 );
 
