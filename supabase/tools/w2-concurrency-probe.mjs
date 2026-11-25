@@ -65,7 +65,14 @@ function runPsql(sql) {
   return new Promise((resolvePromise) => {
     const child = spawn(
       psql,
-      ['--no-psqlrc', '--quiet', '--no-align', '--tuples-only', '--set=ON_ERROR_STOP=1'],
+      [
+        '--no-psqlrc',
+        '--quiet',
+        '--no-align',
+        '--tuples-only',
+        '--set=ON_ERROR_STOP=1',
+        '--set=VERBOSITY=verbose',
+      ],
       { env: psqlEnvironment, stdio: ['pipe', 'pipe', 'pipe'] },
     );
     let stdout = '';
