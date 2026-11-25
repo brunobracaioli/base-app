@@ -1,6 +1,6 @@
 # ADR 0008 — Rotinas de manutenção com pg_cron
 
-- **Status:** proposed
+- **Status:** accepted — revisado pelo ADR 0016 em 2026-11-25
 - **Data:** 2026-11-24
 
 ## Contexto
@@ -25,46 +25,41 @@ linhas de uma tabela.
   account-lifecycle-and-privacy.md §4.1.
 - O resultado (contagem apagada por tabela) vai para `audit.events` com ação
   `ops.purge_expired`, sem dado pessoal, **sempre**, mesmo com zero apagado: é o sinal de vida.
-- `ops.purge_unconfirmed_users()` (dona `auth_fn_owner`) apaga em lotes de 500 as contas não
-  confirmadas com mais de 3 dias e grava o evento `ops.purge_unconfirmed_users` com a contagem.
-- **Alertas (mecanismo concreto).** `ops.check_signals()` grava em `ops.alerts` (código, valor,
-  hora) e, se o Vault tiver `ALERT_RESEND_API_KEY`, `ALERT_TO` e `ALERT_FROM`, envia ao operador um e-mail com
-  `pg_net` pela API do Resend (chave só de envio, no header `Authorization`, sem dado pessoal;
-  um alerta por código a cada 6 h). Sinais: (1) `cron.job_run_details` com falha nas últimas 24 h;
-  (2) sem evento `ops.purge_expired` há mais de 36 h; (3) e-mails de login na última hora acima
-  de 70% e de 90% de `email_sent`; (4) contas não confirmadas acima de 1 000; (5) volume de
-  `audit.events` por `actor_type` na hora (`operator` > 50, `system` > 1 000, `webhook` > 2 000); (6) evento `app_config.updated` com
-  `actor_type = 'operator'` numa chave que **não** está em `app_config.operator_alert_exempt_keys`
-  (a allowlist de chaves por papel não é imposta no banco; este alerta é a mitigação parcial,
-  risco R27).
-  `ALERT_FROM` é o remetente verificado no Resend, fornecido pelo operador: não há
-  remetente inventado nem derivado automaticamente do domínio de exemplo. Os três
-  valores são configuração externa, sem valores no repositório. Sem qualquer um
-  deles, o alerta é persistido localmente e a entrega não é tentada nem marcada
-  como enviada. Os testes locais usam uma porta de transporte falsa; não enviam e-mail.
-  Se o `pg_cron` morrer, o alerta morre com ele: risco R23, coberto por conferência semanal no
-  runbook.
+- `ops.purge_unconfirmed_users()` pertence a `ops` e chama helpers fixos do núcleo
+  pertencentes a `postgres`: contagem e exclusão de contas por e-mail não confirmadas
+  há mais de 3 dias, em lotes de 500. Contas anônimas, confirmadas e recentes são
+  preservadas. O wrapper grava a contagem em auditoria, na mesma transação; não
+  há grant direto de Auth para `ops` nem identificador pessoal no evento.
+- **Alertas persistidos.** `ops.check_signals()` grava código, valor e horário em
+  `ops.alerts`. A baseline não instala `pg_net`, não lê credenciais no Vault e não
+  envia e-mail. Sinais: (1) falhas de cron nas últimas 24 h; (2) ausência do evento
+  `ops.purge_expired` por mais de 36 h; (3) contas não confirmadas acima de 1 000;
+  (4) volume por `actor_type` na hora (`operator` > 50, `system` > 1 000,
+  `webhook` > 2 000); (5) `app_config.updated` por `operator` em chave fora de
+  `operator_alert_exempt_keys` (mitigação parcial de R27).
+  O sinal de e-mail em 70%/90% de `email_sent` só entra após S-AU-4 identificar
+  os eventos que representam envio. Não se inventa esse mapeamento na W2.
+- **Operação do derivado.** Até existir um monitor externo especificado, o operador
+  consulta `ops.alerts` e o sinal de vida do expurgo pelo runbook. Persistir um
+  sinal não comprova notificação nem entrega de e-mail. Se `pg_cron` morrer, a
+  própria verificação para: risco R23. Um notificador futuro mantém a credencial
+  fora do banco e exige spec/ADR próprio; não se adiciona um job nesta onda.
 - **O base-app não tem jobs na Vercel:** sem `vercel.json` com `schedules` ou `crons`, sem
   pasta `apps/web/src/jobs/`, sem filas.
 - A exclusão de conta é **imediata e síncrona** (`AccountDeletionPolicy = immediate`), então
   não precisa de job para executar exclusões vencidas.
 
-## Estado de implementação da onda 2
+## Revisão da baseline em 2026-11-25
 
-- A baseline agenda `ops.purge_expired()` e `ops.check_signals()`. O agendamento de
-  `ops.purge_unconfirmed_users()` fica bloqueado até a aprovação do caminho mínimo para gravar
-  a contagem na auditoria: `auth_fn_owner` não tem `INSERT` em `audit.events`, e não recebeu
-  grant, associação ou helper novo.
-- `ops.check_signals()` implementa falhas recentes do cron, ausência do evento de expurgo,
-  volume de auditoria por `actor_type` e alteração de configuração por operador fora da lista
-  isenta. Os sinais de backlog de contas não confirmadas e volume de e-mails não entram ainda:
-  eles dependem de um caminho de leitura sem ampliar o acesso de `ops` a `auth.*` e da lista
-  fechada de ações de e-mail do spike S-AU-4, respectivamente.
-- `pg_net` é assíncrono. A função guarda o ID da requisição e marca `last_sent_at` apenas quando
-  lê uma resposta HTTP 2xx sem timeout em `net._http_response`; o retorno 2xx comprova que a API
-  do Resend aceitou a requisição, não que a mensagem chegou à caixa do operador. Sem qualquer
-  um dos três segredos de Vault (`ALERT_RESEND_API_KEY`, `ALERT_TO`, `ALERT_FROM`), o alerta
-  fica persistido e não é enfileirado nem marcado como enviado.
+O ADR 0016 substitui a tentativa de grants de Auth para `auth_fn_owner` e o
+transporte por `pg_net`. O Supabase documenta que as ACLs gerenciadas da fila
+não podem isolar seus headers dos demais logins. A baseline nova mantém
+somente o estado dos alertas; não remove extensões, filas ou webhooks de um
+banco existente. Essa remoção exige um plano e autorização do operador.
+
+As três rotinas e seus agendamentos precisam de pgTAP, incluindo contagens,
+zero linhas, lotes, negativas de execução e rollback da auditoria. Falhas da
+baseline anterior permanecem como evidência histórica até a nova execução.
 
 ## Alternativas consideradas
 
@@ -76,8 +71,8 @@ linhas de uma tabela.
 
 ## Consequências
 
-- Os alertas dependem de `pg_net` e do Supabase Vault (extensões habilitadas por migration);
-  localmente `ops.alerts` basta para o pgTAP.
+- Alertas persistidos não dependem de credenciais de envio. A ausência de entrega
+  automática é um limite operacional explícito do template (ADR 0016).
 - O expurgo depende da extensão `pg_cron` do Supabase; fica habilitada por migration e o
   pgTAP confere o agendamento.
 - **Versões derivadas** que precisem de jobs criam `apps/web/src/jobs/` e os agendam como

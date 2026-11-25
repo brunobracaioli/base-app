@@ -81,7 +81,8 @@ Detalhes em `docs/specs/base-app.md` §3.3.
 - Todo `defineRoute` declara `rateLimit` com `onStoreFailure` (e `ipLimit` quando autenticada).
   `purgeAccount` só com `PurgeAuthorization` e só em `modules/privacy/**` e `extensions/**`.
   Gravação em `audit.events` só por `recordAuditEvent`. Funções `SECURITY DEFINER` que tocam
-  `auth` pertencem ao `auth_fn_owner`.
+  `auth` são funções restritas do núcleo, pertencem a `postgres` e constam do registro
+  fechado do ADR 0016; extensões não podem criar outras com esse proprietário.
 
 **Contratos e banco**
 
