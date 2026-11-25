@@ -1,4 +1,5 @@
 import productConfig from '@base-app/config/product.config';
+import { metric } from '@vercel/functions';
 import type { ProductConfig } from '@base-app/config';
 
 import {
@@ -14,7 +15,12 @@ import {
   createPrivacyUseCases,
   type ConsentDocument,
 } from '../../modules/privacy';
-import { createLegalVersionsReader } from '../../modules/app-config';
+import {
+  createAppConfigQuery,
+  createAppConfigSettingsReader,
+  createLegalVersionsReader,
+} from '../../modules/app-config';
+import type { AppConfigProductUrls, ServerGateDecision } from '../../modules/app-config';
 import type { UserAuthContext } from '../authorization/types';
 import { createDatabase } from '../db';
 import type { DbClaims } from '../db';
@@ -58,6 +64,55 @@ function errorFields(error: unknown): {
   };
 }
 
+function safeAppConfigErrorFields(error: unknown): {
+  readonly errorName: string;
+  readonly sqlState?: string;
+} {
+  const rawName =
+    typeof error === 'object' && error !== null && 'name' in error && typeof error.name === 'string'
+      ? error.name
+      : 'Error';
+  const rawCode =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : undefined;
+  const errorName = /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(rawName) ? rawName : 'Error';
+  return {
+    errorName,
+    ...(rawCode && /^[0-9A-Z]{5}$/.test(rawCode) ? { sqlState: rawCode } : {}),
+  };
+}
+
+function appConfigProductUrls(product: ProductConfig): AppConfigProductUrls {
+  return {
+    iosStoreUrl: `https://apps.apple.com/app/id${encodeURIComponent(product.ios.appStoreId)}`,
+    androidStoreUrl: `https://play.google.com/store/apps/details?id=${encodeURIComponent(product.android.package)}`,
+    termsUrl: new URL(product.legal.termsPath, product.web.origin).toString(),
+    privacyUrl: new URL(product.legal.privacyPath, product.web.origin).toString(),
+  };
+}
+
+function appConfigObserver(logger: AppLogger) {
+  return {
+    invalidSetting(key: 'versions' | 'maintenance' | 'legal') {
+      try {
+        metric('app_config.invalid', 1, { setting_key: key });
+      } catch {
+        // Metrics must not affect the fallback response.
+      }
+      logger.warn('Invalid app configuration setting; using fallback.', { key });
+    },
+    readFailed(error: unknown) {
+      try {
+        metric('app_config.invalid', 1, { setting_key: 'unavailable' });
+      } catch {
+        // Metrics must not affect the fallback response.
+      }
+      logger.error('App configuration read failed; using fallback.', safeAppConfigErrorFields(error));
+    },
+  };
+}
+
 function assertVerifiedScope(auth: UserAuthContext): DbClaims {
   if (auth.userId !== auth.dbClaims.sub) {
     throw new TypeError('Verified user does not match database claims.');
@@ -74,6 +129,12 @@ export function createCoreComposition(input: {
   const product = input.product ?? productConfig;
   const clock = { now: input.now ?? (() => new Date()) };
   const legalVersions = createLegalVersionsReader(input.database);
+  const appConfig = createAppConfigQuery({
+    reader: createAppConfigSettingsReader(input.database),
+    productUrls: appConfigProductUrls(product),
+    clock,
+    observer: appConfigObserver(input.logger),
+  });
   const readFreshRoles = createFreshRolesReader(input.database, input.logger);
 
   function forUser(auth: UserAuthContext) {
@@ -149,12 +210,30 @@ export function createCoreComposition(input: {
     loadFreshRoles(auth: UserAuthContext): Promise<readonly string[]> {
       return readFreshRoles(auth);
     },
+
+    getPublicAppConfig() {
+      return appConfig.getPublicConfig();
+    },
+
+    checkAppConfigGate(input: {
+      readonly request: Request;
+      readonly maintenance: 'block' | 'exempt';
+    }): Promise<ServerGateDecision> {
+      return appConfig.checkGate({
+        appVersion: input.request.headers.get('x-app-version'),
+        platform: input.request.headers.get('x-platform'),
+        maintenance: input.maintenance,
+      });
+    },
   });
 }
 
 export type CoreComposition = ReturnType<typeof createCoreComposition>;
+type AppConfigRuntime = Pick<CoreComposition, 'getPublicAppConfig' | 'checkAppConfigGate'>;
 
 let coreRuntime: CoreComposition | undefined;
+let fallbackAppConfigRuntime: AppConfigRuntime | undefined;
+
 
 /**
  * Environment and database setup is deferred until a core user route or fresh
@@ -170,4 +249,40 @@ export function getCoreRuntime(): CoreComposition {
   });
   coreRuntime = createCoreComposition({ database, logger });
   return coreRuntime;
+}
+
+
+function getFallbackAppConfigRuntime(error: unknown): AppConfigRuntime {
+  if (fallbackAppConfigRuntime) return fallbackAppConfigRuntime;
+  const logger = createLogger();
+  const appConfig = createAppConfigQuery({
+    reader: {
+      async readAll() {
+        throw error;
+      },
+    },
+    productUrls: appConfigProductUrls(productConfig),
+    clock: { now: () => new Date() },
+    observer: appConfigObserver(logger),
+  });
+  fallbackAppConfigRuntime = {
+    getPublicAppConfig: appConfig.getPublicConfig,
+    checkAppConfigGate(input) {
+      return appConfig.checkGate({
+        appVersion: input.request.headers.get('x-app-version'),
+        platform: input.request.headers.get('x-platform'),
+        maintenance: input.maintenance,
+      });
+    },
+  };
+  return fallbackAppConfigRuntime;
+}
+
+/** Public configuration and server gates fail open if database configuration is unavailable. */
+export function getSafeAppConfigRuntime(): AppConfigRuntime {
+  try {
+    return getCoreRuntime();
+  } catch (error) {
+    return getFallbackAppConfigRuntime(error);
+  }
 }

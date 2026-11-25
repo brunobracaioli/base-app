@@ -65,6 +65,109 @@ function authenticatedRequest(token = 'test-token'): Request {
 }
 
 describe('defineRoute HTTP pipeline', () => {
+  it('uses the app-config public cache only for successful public app-config responses', async () => {
+    const test = createTestRouteDependencies();
+    test.rateLimiter.failure = new Error('secret-bearing Redis response');
+    const route = createDefineRoute(test.dependencies)({
+      operationId: 'getAppConfig',
+      auth: { kind: 'public' },
+      rateLimit: { key: 'ip', limit: 60, windowSec: 60, onStoreFailure: 'open' },
+      cachePolicy: 'public-app-config',
+      output: outputSchema,
+      handler: () => ({ ok: true }),
+    });
+    const response = await route(new Request('https://app.example/api/v1/app-config'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe(
+      'public, s-maxage=60, stale-while-revalidate=60',
+    );
+    expect(response.headers.get('x-rate-limit-failure')).toBe('open');
+    expect(test.logs.map(({ fields }) => JSON.stringify(fields)).join(' ')).not.toContain(
+      'secret-bearing Redis response',
+    );
+  });
+
+  it('rejects public app-config caching on private or unrelated routes', () => {
+    const test = createTestRouteDependencies();
+    expect(() =>
+      createDefineRoute(test.dependencies)({
+        operationId: 'getMe',
+        auth: { kind: 'user' },
+        rateLimit: userRateLimit,
+        cachePolicy: 'public-app-config',
+        output: outputSchema,
+        handler: () => ({ ok: true }),
+      }),
+    ).toThrow(/restricted to its public 200 route/);
+    expect(() =>
+      createDefineRoute(test.dependencies)({
+        operationId: 'getPublicTest',
+        auth: { kind: 'public' },
+        rateLimit: ipLimit,
+        cachePolicy: 'public-app-config',
+        output: outputSchema,
+        handler: () => ({ ok: true }),
+      }),
+    ).toThrow(/restricted to its public 200 route/);
+  });
+
+  it('returns maintenance and update gate problems before auth on every HTTP method', async () => {
+    for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
+      const test = createTestRouteDependencies({
+        overrides: {
+          async checkVersionAndMaintenance() {
+            test.order.push('gate');
+            return {
+              allow: false,
+              status: 503,
+              code: 'app.maintenance',
+              title: 'Service temporarily unavailable.',
+              retryAfterSec: 60,
+            };
+          },
+        },
+      });
+      const route = createDefineRoute(test.dependencies)({
+        operationId: `block${method[0]}${method.slice(1).toLowerCase()}`,
+        auth: { kind: 'user' },
+        rateLimit: userRateLimit,
+        output: outputSchema,
+        handler: () => ({ ok: true }),
+      });
+      const response = await route(
+        new Request('https://app.example/api/v1/me', { method }),
+      );
+      expect(response.status).toBe(503);
+      expect(response.headers.get('retry-after')).toBe('60');
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      expect(test.order).toEqual(['gate']);
+    }
+
+    const outdated = createTestRouteDependencies({
+      overrides: {
+        async checkVersionAndMaintenance() {
+          return {
+            allow: false,
+            status: 426,
+            code: 'app.update_required',
+            title: 'Update required.',
+          };
+        },
+      },
+    });
+    const response = await createDefineRoute(outdated.dependencies)({
+      operationId: 'getUpdateGateTest',
+      auth: { kind: 'user' },
+      rateLimit: userRateLimit,
+      output: outputSchema,
+      handler: () => ({ ok: true }),
+    })(new Request('https://app.example/api/v1/me'));
+    expect(response.status).toBe(426);
+    expect(response.headers.get('retry-after')).toBeNull();
+    expect((await response.json()).code).toBe('app.update_required');
+  });
+
   it('runs gate, authentication, rate limit, authorization, validation, and handler in order', async () => {
     const test = createTestRouteDependencies({
       policies: new Map([

@@ -76,6 +76,7 @@ export type GateDecision =
       readonly status: 426 | 503;
       readonly code: string;
       readonly title: string;
+      readonly retryAfterSec?: 60;
     };
 
 export type SecurityAuditEvent = {
@@ -130,6 +131,7 @@ type DefineRouteCommon<Schemas extends RouteInputSchemas> = {
   readonly input?: Schemas;
   readonly maxBodyBytes?: number;
   readonly maintenance?: 'block' | 'exempt';
+  readonly cachePolicy?: 'public-app-config';
   readonly authorize?: readonly string[];
   readonly destructive?: boolean;
   readonly idempotency?: 'none' | 'required';

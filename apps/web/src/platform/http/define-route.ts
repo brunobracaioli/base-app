@@ -26,6 +26,8 @@ import type {
 } from './types';
 import type { RateLimitConfig } from './types';
 
+const PUBLIC_APP_CONFIG_CACHE_CONTROL =
+  'public, s-maxage=60, stale-while-revalidate=60' as const;
 const DEFAULT_BODY_LIMIT = 32 * 1024;
 const MAX_BODY_LIMIT = 1024 * 1024;
 const DEFAULT_USER_IP_LIMIT = 120;
@@ -90,6 +92,15 @@ function validateRouteDefinition<Schemas extends RouteInputSchemas, Output>(
       throw new TypeError('A 204 route output schema must validate to undefined.');
     }
   }
+  if (
+    definition.cachePolicy === 'public-app-config' &&
+    (definition.operationId !== 'getAppConfig' ||
+      definition.auth.kind !== 'public' ||
+      definition.successStatus === 204)
+  ) {
+    throw new TypeError('Public app-config caching is restricted to its public 200 route.');
+  }
+
   if (definition.destructive && definition.auth.kind !== 'user') {
     throw new TypeError('Destructive routes require user authentication.');
   }
@@ -111,13 +122,18 @@ function createResponse(
   status: number,
   requestId: string,
   headers?: HeadersInit,
+  cacheControl?: string,
 ): Response {
   const responseHeaders = new Headers(headers);
   if (status !== 204) responseHeaders.set('Content-Type', 'application/json; charset=utf-8');
   responseHeaders.set('X-Request-Id', requestId);
-  responseHeaders.set('Cache-Control', 'no-store');
+  responseHeaders.set('Cache-Control', cacheControl ?? 'no-store');
   const responseBody = status === 204 ? null : (JSON.stringify(body) ?? 'null');
-  return applySecurityHeaders(new Response(responseBody, { status, headers: responseHeaders }));
+  const response = applySecurityHeaders(
+    new Response(responseBody, { status, headers: responseHeaders }),
+  );
+  if (cacheControl !== undefined) response.headers.set('Cache-Control', cacheControl);
+  return response;
 }
 
 function authFailureProblem(error: AuthFailure): HttpProblem {
@@ -587,7 +603,16 @@ export function createDefineRoute(dependencies: RouteDependencies) {
           operationId: definition.operationId,
           maintenance,
         });
-        if (!gate.allow) throw new HttpProblem(gate.status, gate.code, gate.title);
+        if (!gate.allow) {
+          throw new HttpProblem(
+            gate.status,
+            gate.code,
+            gate.title,
+            gate.retryAfterSec === undefined
+              ? undefined
+              : { 'Retry-After': String(gate.retryAfterSec) },
+          );
+        }
 
         let auth: AuthContext | null = null;
         const ip = ipAddress(request);
@@ -765,7 +790,15 @@ export function createDefineRoute(dependencies: RouteDependencies) {
         }
 
         outcome = 'success';
-        return createResponse(output, successStatus, requestId, responseHeaders);
+        return createResponse(
+          output,
+          successStatus,
+          requestId,
+          responseHeaders,
+          definition.cachePolicy === 'public-app-config'
+            ? PUBLIC_APP_CONFIG_CACHE_CONTROL
+            : undefined,
+        );
       } catch (error) {
         if (idempotencyLease) {
           await releaseIdempotency(dependencies, {

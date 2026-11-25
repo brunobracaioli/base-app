@@ -65,7 +65,13 @@ export function createDefaultRouteDependencies(
     rateLimiter: new LazyEnvironmentRateLimiter(),
     idempotencyStore: new UnavailableIdempotencyStore(),
     authenticateUser: async (token) => verifyAccessToken(token),
-    checkVersionAndMaintenance: async () => ({ allow: true }),
+    checkVersionAndMaintenance: async (input) => {
+      if (input.operationId === 'getHealth' || input.operationId === 'getAppConfig') {
+        return { allow: true };
+      }
+      const { getSafeAppConfigRuntime } = await import('../composition/core');
+      return getSafeAppConfigRuntime().checkAppConfigGate(input);
+    },
     authorizationPolicies: serverExtensionComposition.authorizationPolicies,
     loadFreshRoles: async (auth) => {
       const { getCoreRuntime } = await import('../composition/core');

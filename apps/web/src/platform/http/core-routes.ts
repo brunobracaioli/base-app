@@ -1,5 +1,5 @@
-import { coreEndpoints, ConsentBody, Me, UpdateProfileBody } from '@base-app/contracts';
-import type { MeResponse } from '@base-app/contracts';
+import { AppConfigResponse, coreEndpoints, ConsentBody, Me, UpdateProfileBody } from '@base-app/contracts';
+import type { AppConfigResponseValue, MeResponse } from '@base-app/contracts';
 import * as z from 'zod';
 
 import { ConsentVersionOutdatedError } from '../../modules/privacy';
@@ -8,7 +8,7 @@ import type { ProfilePatch } from '../../modules/identity';
 import { getProfileLocaleHint } from '../auth';
 import type { AuthContext, UserAuthContext } from '../authorization/types';
 import type { CoreComposition } from '../composition/core';
-import { getCoreRuntime } from '../composition/core';
+import { getCoreRuntime, getSafeAppConfigRuntime } from '../composition/core';
 import type { DefineRouteInput } from './types';
 import { HttpProblem } from './problem';
 
@@ -18,6 +18,7 @@ function findEndpoint(operationId: string) {
   return endpoint;
 }
 
+const getAppConfigContract = findEndpoint('getAppConfig');
 const getMeContract = findEndpoint('getMe');
 const updateMeContract = findEndpoint('updateMe');
 const acceptConsentContract = findEndpoint('acceptConsent');
@@ -60,7 +61,23 @@ function userAuth(auth: AuthContext | null): UserAuthContext {
 type UpdateMeInput = { readonly body: typeof UpdateProfileBody };
 type AcceptConsentInput = { readonly body: typeof ConsentBody };
 
-export function createCoreRouteDefinitions(getRuntime: () => CoreComposition) {
+export function createCoreRouteDefinitions(
+  getRuntime: () => CoreComposition,
+  getPublicAppConfig: () => Promise<AppConfigResponseValue> = () =>
+    getSafeAppConfigRuntime().getPublicAppConfig(),
+) {
+  const getAppConfig: DefineRouteInput<Record<never, never>, AppConfigResponseValue> = {
+    operationId: getAppConfigContract.operationId,
+    auth: { kind: 'public' },
+    rateLimit: getAppConfigContract.rateLimit,
+    successStatus: 200,
+    cachePolicy: 'public-app-config',
+    output: AppConfigResponse,
+    async handler() {
+      return getPublicAppConfig();
+    },
+  };
+
   const getMe: DefineRouteInput<Record<never, never>, MeResponse> = {
     operationId: getMeContract.operationId,
     auth: { kind: 'user' },
@@ -138,7 +155,10 @@ export function createCoreRouteDefinitions(getRuntime: () => CoreComposition) {
     },
   };
 
-  return Object.freeze({ getMe, updateMe, acceptConsent });
+  return Object.freeze({ getAppConfig, getMe, updateMe, acceptConsent });
 }
 
-export const coreRouteDefinitions = createCoreRouteDefinitions(() => getCoreRuntime());
+export const coreRouteDefinitions = createCoreRouteDefinitions(
+  () => getCoreRuntime(),
+  () => getSafeAppConfigRuntime().getPublicAppConfig(),
+);

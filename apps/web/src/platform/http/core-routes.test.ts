@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AppConfigResponse } from '@base-app/contracts';
 import type { Pool } from 'pg';
 
 import { ConsentRecord } from '../../modules/privacy';
@@ -25,6 +26,32 @@ import { createCoreRouteDefinitions } from './core-routes';
 
 const NOW = new Date('2026-11-25T12:00:00.000Z');
 const LEGAL_VERSIONS = { termsVersion: '2026-11-24', privacyVersion: '2026-11-25' } as const;
+const APP_CONFIG_RESPONSE = AppConfigResponse.parse({
+  versions: {
+    ios: {
+      minSupported: '1.0.0',
+      latest: '1.1.0',
+      storeUrl: 'https://apps.apple.com/app/id0000000000',
+    },
+    android: {
+      minSupported: '1.0.0',
+      latest: '1.1.0',
+      storeUrl: 'https://play.google.com/store/apps/details?id=com.example.myapp',
+    },
+  },
+  maintenance: {
+    active: false,
+    platforms: ['ios', 'android'],
+    messageKey: 'maintenance.default',
+    until: null,
+  },
+  legal: {
+    termsVersion: '2026-01-01',
+    privacyVersion: '2026-01-01',
+    termsUrl: 'https://myapp.example.invalid/terms',
+    privacyUrl: 'https://myapp.example.invalid/privacy',
+  },
+});
 const DATABASE_ENVIRONMENT: DatabaseEnvironment = {
   DATABASE_URL: 'postgresql://api_runtime:secret@db.example.invalid:6543/postgres',
   DATABASE_CA_CERT: '-----BEGIN CERTIFICATE-----\nlocal-test-ca\n-----END CERTIFICATE-----',
@@ -139,6 +166,12 @@ function createFakeCoreState(): FakeCoreState {
     async loadFreshRoles() {
       return [];
     },
+    async getPublicAppConfig() {
+      return APP_CONFIG_RESPONSE;
+    },
+    async checkAppConfigGate() {
+      return { allow: true };
+    },
   };
   return { runtime, profiles, creationCount, consents, acceptedWrites, correlationIds };
 }
@@ -212,6 +245,40 @@ function createForeignKeyFailureDatabase() {
 }
 
 describe('W4 core endpoint definitions', () => {
+  it('serves app config publicly with query-independent cached content', async () => {
+    const state = createFakeCoreState();
+    let configReads = 0;
+    const definition = createCoreRouteDefinitions(
+      () => state.runtime,
+      async () => {
+        configReads += 1;
+        return APP_CONFIG_RESPONSE;
+      },
+    ).getAppConfig;
+    const test = createTestRouteDependencies();
+    const route = createDefineRoute(test.dependencies)(definition);
+    const first = await route(
+      new Request('https://app.example/api/v1/app-config?client=ios', {
+        headers: { 'x-real-ip': '198.51.100.12' },
+      }),
+    );
+    const second = await route(
+      new Request('https://app.example/api/v1/app-config?client=android', {
+        headers: { 'x-real-ip': '198.51.100.12' },
+      }),
+    );
+
+    expect(first.status).toBe(200);
+    expect(first.headers.get('cache-control')).toBe(
+      'public, s-maxage=60, stale-while-revalidate=60',
+    );
+    expect(await first.json()).toEqual(await second.json());
+    expect(configReads).toBe(2);
+    expect(test.rateLimiter.calls.map(({ bucket }) => bucket)).toEqual([
+      'getAppConfig:ip:198.51.100.12',
+      'getAppConfig:ip:198.51.100.12',
+    ]);
+  });
   it('isolates GET and PATCH by the verified JWT subject', async () => {
     const routes = protectedRoutes(createFakeCoreState());
     const a = await routes.getMe(request('me', 'GET', 'tokenA'));
@@ -354,6 +421,12 @@ describe('W4 core endpoint definitions', () => {
       },
       async loadFreshRoles() {
         return [];
+      },
+      async getPublicAppConfig() {
+        return APP_CONFIG_RESPONSE;
+      },
+      async checkAppConfigGate() {
+        return { allow: true };
       },
     };
     const dependencies = createTestRouteDependencies({

@@ -9,8 +9,26 @@ import { problemResponse } from './platform/http/problem';
 import { createUuidV7 } from './platform/http/request-id';
 import { buildContentSecurityPolicy, hardeningHeadersForPath } from './platform/edge/csp';
 import { resolveEdgeRequest, type EdgeEnvironment } from './platform/edge/host-policy';
+import type { EdgeExtension } from './platform/extensions/types';
 
 const logger = createLogger();
+
+export function applyProxyResponseHeaders(
+  response: Response,
+  input: {
+    readonly method: string;
+    readonly path: string;
+    readonly extensions: readonly EdgeExtension[];
+  },
+): Response {
+  const routeOwnsPublicCache =
+    input.method === 'GET' && input.path === '/api/v1/app-config' && response.status === 200;
+  if (!routeOwnsPublicCache) response.headers.set('Cache-Control', 'no-store');
+  for (const [name, value] of Object.entries(hardeningHeadersForPath(input.path, input.extensions))) {
+    response.headers.set(name, value);
+  }
+  return response;
+}
 
 function notFoundResponse(): Response {
   const requestId = createUuidV7();
@@ -64,13 +82,11 @@ export function proxy(request: NextRequest): Response {
 
     const response = NextResponse.next({ request: { headers: requestHeaders } });
     response.headers.set('Content-Security-Policy', contentSecurityPolicy);
-    response.headers.set('Cache-Control', 'no-store');
-    for (const [name, value] of Object.entries(
-      hardeningHeadersForPath(decision.path, edgeExtensions),
-    )) {
-      response.headers.set(name, value);
-    }
-    return response;
+    return applyProxyResponseHeaders(response, {
+      method: request.method,
+      path: decision.path,
+      extensions: edgeExtensions,
+    });
   } catch (error) {
     return unavailableResponse(error);
   }
