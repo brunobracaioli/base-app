@@ -155,9 +155,12 @@ const signupResults = await Promise.all(
     .map(async (batch) => ({
       batch,
       result: await runPsql(
-        `SET ROLE supabase_auth_admin;\n${batch
-          .map(() => `select identity.before_user_created(${anonymousEvent});`)
-          .join('\n')}\nRESET ROLE;\n`,
+        `${batch
+          .map(
+            () =>
+              `BEGIN;\nSET LOCAL ROLE supabase_auth_admin;\nSELECT identity.before_user_created(${anonymousEvent});\nCOMMIT;`,
+          )
+          .join('\n')}\n`,
       ),
     })),
 );
@@ -196,12 +199,26 @@ if (signupReadback.exitCode !== 0 || parseRows(signupReadback.stdout)[0] !== '30
 
 const runId = randomBytes(6).toString('hex');
 const seed = await runPsql(`
-insert into audit.events (actor_type, actor_ref, action, resource_type, resource_ref,
-                          outcome, correlation_id, metadata)
-select 'system', ${sqlLiteral(`script:pgtap:w2-probe-${runId}`)},
-       'app_config.updated', 'app_config.settings', 'maintenance', 'success',
-       ${sqlLiteral(`w2-probe-${runId}-seed-`)} || generated.n::text, '{}'::jsonb
-from generate_series(1, 19) as generated(n);
+DO $probe$
+DECLARE
+  v_expected_updated_at timestamptz;
+  v_change integer;
+BEGIN
+  FOR v_change IN 1..19 LOOP
+    SELECT settings.updated_at
+      INTO v_expected_updated_at
+    FROM app_config.settings settings
+    WHERE settings.key = 'maintenance';
+
+    PERFORM app_config.set_setting(
+      'maintenance', '{"active":false}'::jsonb, 'system',
+      ${sqlLiteral(`script:app-config:w2-probe-${runId}`)},
+      ${sqlLiteral(`w2-probe-${runId}-seed-`)} || v_change::text,
+      v_expected_updated_at
+    );
+  END LOOP;
+END
+$probe$;
 `);
 if (seed.exitCode !== 0)
   fail('app_config_quota_seed_failed', { exitCode: seed.exitCode, sqlStates: seed.sqlStates });
@@ -243,10 +260,10 @@ const updates = [
 ];
 const updateResults = await Promise.all(
   updates.map(({ key, value, timestamp }) =>
-    runPsql(`\\set VERBOSITY verbose\nSET ROLE app_config_writer;\nSELECT app_config.set_setting(
+    runPsql(`\\set VERBOSITY verbose\nBEGIN;\nSET LOCAL ROLE app_config_writer;\nSELECT app_config.set_setting(
   ${sqlLiteral(key)}, ${sqlLiteral(value)}::jsonb, 'system', ${sqlLiteral(actorRef)},
   ${sqlLiteral(`w2-probe-${runId}-${key}`)}, ${sqlLiteral(timestamp)}::timestamptz
-);\nRESET ROLE;\n`),
+);\nCOMMIT;\n`),
   ),
 );
 const successfulUpdates = updateResults.filter((result) => result.exitCode === 0).length;

@@ -26,13 +26,14 @@ Then run:
 node supabase/tools/w2-concurrency-probe.mjs
 ```
 
-The probe submits 301 anonymous-hook calls through concurrent PostgreSQL sessions using
-`SET ROLE supabase_auth_admin` and expects exactly 300 reservations plus one HTTP 429 result. It
-then seeds 19 count-only configuration events as the fixture administrator and races two valid
-writes through `SET ROLE app_config_writer`; exactly one write must commit as change 20, and the
-other must fail with SQLSTATE `54000`. This also exercises the fresh-snapshot quota read after
-the transaction advisory lock. Each psql child has a 30-second timeout, and failure output only
-reports SQLSTATEs, counts, and exit codes.
+The probe submits 301 anonymous-hook calls through concurrent PostgreSQL sessions; each call
+uses its own explicit transaction and `SET LOCAL ROLE supabase_auth_admin`. It expects exactly
+300 reservations plus one HTTP 429 result. The fixture administrator then reads the setting and
+seeds 19 changes through `app_config.set_setting` itself. Finally, two valid writes race through
+`SET LOCAL ROLE app_config_writer`; exactly one must commit as change 20, and the other must fail
+with SQLSTATE `54000`. This exercises the fresh-snapshot quota read after the transaction
+advisory lock. Each psql child has a 30-second timeout, and failure output only reports SQLSTATEs,
+counts, timeout flags, and exit codes.
 
 The probe leaves only opaque signup reservations and synthetic count-only audit rows in the
 scratch database. Reset that disposable database after recording the JSON result. It does not
