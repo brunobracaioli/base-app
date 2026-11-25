@@ -54,3 +54,21 @@ AC-07 permite offline, exceto quando o cache exige atualização; manutenção
 armazenada não impede o uso offline. As URLs e exemplos vêm do produto existente.
 As assinaturas reais, HIT de CDN e testes nativos permanecem no checklist do
 app derivado; testes locais não serão descritos como execução hospedada.
+
+## Revisão de segurança da operação — proposta adicional
+
+A revisão encontrou `semver_key(text) -> int[]` na baseline: componentes
+aceitos pelo contrato podem exceder o inteiro de 32 bits. Proposta pendente:
+alinhar a comparação SQL ao formato decimal do contrato, sem estreitar a API.
+
+O rollback também não deve confiar em eventos `app_config.updated` inseridos
+por outros membros de `audit_writer`. Proposta pendente: reservar essa ação
+para o mutator autorizado e usar um papel sem login de leitura restrita a
+esses eventos para a função de rollback. `ops` não tem acesso atual a
+`metadata`; não se ampliará esse papel de manutenção nem o acesso do writer.
+
+Assinaturas distintas protegem o executor e o plano exato. Não são uma
+barreira contra quem já detém a credencial do banco e chama SQL diretamente,
+nem contra um host executor comprometido. A credencial deve permanecer na
+máquina autorizada do operador; não será copiada para a KVM. O residual deve
+constar do ADR e do runbook. Não será criado um broker ou serviço novo nesta onda.
