@@ -5,9 +5,9 @@ continua no merge da onda 0 (`cda886d`). Nenhum novo push, PR ou deploy foi feit
 
 | Onda | Branch | Estado |
 | --- | --- | --- |
-| 1 | `feat/w1-api-platform` | `cf096e0`; código e gates locais aprovados, aceite de caminhos pré-Proxy pendente |
+| 1 | `feat/w1-api-platform` | `cf096e0` com ajuste de testes `1bc8237`; aceite de caminhos pré-Proxy pendente |
 | 2 | `feat/w2-supabase-baseline` | Base local W1; reset, código, tipos e pooler TLS validados; pgTAP reprova a baseline de segurança |
-| 3 | `feat/w3-mobile-shell` | `8949ee6`, `ef5e559`, `861e46d`; shell/client parciais, fachada e builds EAS pendentes |
+| 3 | `feat/w3-mobile-shell` | `347d415`; shell/client e correções de segurança, fachada e builds EAS pendentes |
 
 Cada onda usou uma sessão/worktree própria. A integração local de W2 sobre W1
 permite compilar contra as interfaces reais, sem integrar essas ondas na main.
@@ -18,7 +18,7 @@ corrigir diretamente a onda 2.
 
 | Verificação | Resultado |
 | --- | --- |
-| W1 `pnpm ci:local` | 18 gates aprovados no commit limpo `cf096e0`; 216 testes do workspace |
+| W1 `pnpm ci:local` | 18 gates aprovados; inclui os 81 testes da API |
 | W1 build e HTTP em modo de produção | API, HTML e asset passaram; nonce do HTML coincide com CSP |
 | W2 instalação congelada | Passou com Node 24.22.3/pnpm 12.23.0 e política de supply chain preservada |
 | W2 `pnpm turbo run lint typecheck test` | 14 tarefas aprovadas; suíte ampliada com 10 testes da guarda SQL; 1 teste condicionado à conexão real não roda nesse comando |
@@ -29,7 +29,7 @@ corrigir diretamente a onda 2.
 | W2 `supabase test db` | Reprovou; o log registra os critérios de segurança/funcionalidade ainda não atendidos |
 | W2 `pnpm db:types` e verificação de drift | Passaram contra o banco real; arquivo regenerado manteve o mesmo SHA-256 |
 | W2 harness real pelo pooler TLS | Passou: claims, papéis, rollback, limpeza, microssegundos e auditoria atômica |
-| W3 snapshot parcial: lint, typecheck e Jest/RNTL | Passaram; suíte ampliada com regressão para campos opcionais vazios |
+| W3 snapshot parcial: lint, typecheck e Jest/RNTL | Passaram; 11 suítes/52 testes, incluindo campos opcionais vazios |
 | W3 Expo config, exports e prebuilds | Android/iOS passaram; não são builds EAS nem prova em dispositivo |
 | W3 worktree completa | Teste e typecheck ainda falham porque `extensions/api.ts` está ausente; seu teste foi preservado fora do commit parcial |
 
@@ -38,6 +38,8 @@ recibo do harness TLS, seu código e os hashes estão em
 `.artifacts/w2-verification/`. O pgTAP usa um administrador descartável apenas
 para fixtures e para assumir os papéis sob teste; não executa as migrations
 como superusuário. Os helpers pgTAP ficam no schema temporário `test_support`.
+O comando de testes de `packages/config` seleciona somente `src`, evitando
+executar novamente os testes emitidos em `dist` durante o build.
 
 ## Onda 1 — critérios de aceite
 

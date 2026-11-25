@@ -8,8 +8,8 @@
   ferramentas no commit `6eea6e8`; a tree do merge é a mesma validada.
   Ondas 1/2/3 em implementação paralela autorizada, uma por sessão/worktree,
   com agentes Luna/xhigh. Nenhuma delas está concluída.
-- **Próximo passo:** concluir correções e gates independentes das ondas 1/2/3,
-  resolver as decisões de contrato/segurança abaixo e revisar cada onda antes
+- **Próximo passo:** resolver as decisões de contrato/segurança abaixo, fechar
+  os aceites pendentes e revisar cada onda antes
   de integrá-la em série. Ondas 4+ não iniciadas. GitHub Actions permanece
   desativado; a execução usa o ambiente local ou a KVM existente (ADR 0015).
 - **Plano/evidências:** [onda 0](docs/plan/wave-0-execution.md). Quatro frentes de
@@ -20,9 +20,13 @@
   `feat/w3-mobile-shell`; o gerente coordena contratos compartilhados e integração.
 - **Verificação atual:** [relatório por critério](docs/plan/waves-1-3-verification.md).
   W1 está no commit local `cf096e0`, com 18 gates e 216 testes aprovados.
-  W3 tem shell/client nos commits `8949ee6`, `ef5e559` e `861e46d`; a fachada
-  continua pendente. Esta branch W2 usa W1 como base local para validar a
+  W2 e o snapshot parcial W3 também passaram pelos 18 gates locais. No mobile,
+  `71845f4` corrige dependências vulneráveis e `5513866` corrige o boot com
+  campos opcionais vazios; a fachada continua pendente. Esta branch W2 usa
+  W1 como base local para validar a
   integração; `main` permanece em `cda886d`. Não houve novo push nem PR.
+  KVM, volumes, rede, certificados temporários e túnel da verificação foram
+  removidos; os demais workloads foram preservados.
 - **Versão derivada:** o app-bootstrap (pago, repositório privado) estende este núcleo pelos
   pontos de extensão de `docs/specs/base-app.md` §3.4. Mudança no núcleo pedida por ele é
   feita aqui primeiro, de forma genérica.
