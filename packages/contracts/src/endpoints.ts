@@ -80,7 +80,8 @@ export const coreEndpoints = [
     problemResponses: [
       {
         status: 401,
-        description: 'The authentication token is missing, invalid, expired, or belongs to a deleted account.',
+        description:
+          'The authentication token is missing, invalid, expired, or belongs to a deleted account.',
       },
       { status: 503, description: 'Authentication or rate limiting is unavailable.' },
     ],
@@ -112,7 +113,8 @@ export const coreEndpoints = [
       { status: 400, description: 'The request body failed validation.' },
       {
         status: 401,
-        description: 'The authentication token is missing, invalid, expired, or belongs to a deleted account.',
+        description:
+          'The authentication token is missing, invalid, expired, or belongs to a deleted account.',
       },
       { status: 503, description: 'Authentication or rate limiting is unavailable.' },
     ],
@@ -142,7 +144,8 @@ export const coreEndpoints = [
       { status: 400, description: 'The request body failed validation.' },
       {
         status: 401,
-        description: 'The authentication token is missing, invalid, expired, or belongs to a deleted account.',
+        description:
+          'The authentication token is missing, invalid, expired, or belongs to a deleted account.',
       },
       {
         status: 409,

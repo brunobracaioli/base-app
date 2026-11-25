@@ -110,9 +110,7 @@ describe('base API contracts', () => {
     });
     expect(() => UpdateProfileBody.parse({})).toThrow(ZodError);
     expect(() => UpdateProfileBody.parse({ displayName: '   ' })).toThrow(ZodError);
-    expect(() => UpdateProfileBody.parse({ displayName: 'Ana', userId: me.id })).toThrow(
-      ZodError,
-    );
+    expect(() => UpdateProfileBody.parse({ displayName: 'Ana', userId: me.id })).toThrow(ZodError);
 
     const consent = { document: 'terms', version: '2026-11-24' };
     expect(ConsentBody.parse(consent)).toEqual(consent);
@@ -123,9 +121,7 @@ describe('base API contracts', () => {
   it('declares authenticated user limits and OpenAPI request/problem responses', () => {
     const getMe = coreEndpoints.find(({ operationId }) => operationId === 'getMe');
     const updateMe = coreEndpoints.find(({ operationId }) => operationId === 'updateMe');
-    const acceptConsent = coreEndpoints.find(
-      ({ operationId }) => operationId === 'acceptConsent',
-    );
+    const acceptConsent = coreEndpoints.find(({ operationId }) => operationId === 'acceptConsent');
     expect(getMe?.rateLimit).toEqual({
       key: 'user',
       limit: 60,

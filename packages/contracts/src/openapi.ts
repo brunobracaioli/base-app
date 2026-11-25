@@ -11,13 +11,13 @@ type OpenApiResponse = {
 };
 
 type OpenApiContent = Readonly<
-    Record<
-      string,
-      {
-        readonly schema: Readonly<Record<string, unknown>>;
-      }
-    >
-  >;
+  Record<
+    string,
+    {
+      readonly schema: Readonly<Record<string, unknown>>;
+    }
+  >
+>;
 
 type OpenApiOperation = {
   readonly operationId: string;

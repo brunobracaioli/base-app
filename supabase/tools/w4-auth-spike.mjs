@@ -26,13 +26,17 @@ const progress = {
 };
 
 function loadLocalStatus() {
-  const result = spawnSync(supabaseBin, ['status', '--workdir', repositoryRoot, '--output', 'json'], {
-    cwd: repositoryRoot,
-    encoding: 'utf8',
-    timeout: 15_000,
-    maxBuffer: 8 * 1024 * 1024,
-    env: { ...process.env, NO_COLOR: '1' },
-  });
+  const result = spawnSync(
+    supabaseBin,
+    ['status', '--workdir', repositoryRoot, '--output', 'json'],
+    {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      timeout: 15_000,
+      maxBuffer: 8 * 1024 * 1024,
+      env: { ...process.env, NO_COLOR: '1' },
+    },
+  );
 
   if (result.status !== 0 || result.error) throw new Error('status');
 
@@ -40,7 +44,11 @@ function loadLocalStatus() {
   const apiUrl = status.API_URL || status.api_url;
   const anonymousKey = status.ANON_KEY || status.anon_key;
   const serviceRoleKey = status.SERVICE_ROLE_KEY || status.service_role_key;
-  if (typeof apiUrl !== 'string' || typeof anonymousKey !== 'string' || typeof serviceRoleKey !== 'string')
+  if (
+    typeof apiUrl !== 'string' ||
+    typeof anonymousKey !== 'string' ||
+    typeof serviceRoleKey !== 'string'
+  )
     throw new Error('status_shape');
 
   const parsedUrl = new URL(apiUrl);
@@ -277,15 +285,12 @@ async function main() {
   }
   progress.initialClaimsVerified = true;
 
-  await requestJson(
-    `${apiUrl}/auth/v1/admin/users/${encodeURIComponent(initial.payload.sub)}`,
-    {
-      method: 'PUT',
-      apiKey: serviceRoleKey,
-      bearer: serviceRoleKey,
-      body: { app_metadata: { roles: refreshedRoles } },
-    },
-  );
+  await requestJson(`${apiUrl}/auth/v1/admin/users/${encodeURIComponent(initial.payload.sub)}`, {
+    method: 'PUT',
+    apiKey: serviceRoleKey,
+    bearer: serviceRoleKey,
+    body: { app_metadata: { roles: refreshedRoles } },
+  });
   progress.metadataUpdated = true;
 
   const refreshedSession = await requestJson(`${apiUrl}/auth/v1/token?grant_type=refresh_token`, {
@@ -314,15 +319,12 @@ async function main() {
   }
   progress.refreshedClaimsVerified = true;
 
-  await requestJson(
-    `${apiUrl}/auth/v1/admin/users/${encodeURIComponent(refreshed.payload.sub)}`,
-    {
-      method: 'PUT',
-      apiKey: serviceRoleKey,
-      bearer: serviceRoleKey,
-      body: { app_metadata: { roles: initialRoles } },
-    },
-  );
+  await requestJson(`${apiUrl}/auth/v1/admin/users/${encodeURIComponent(refreshed.payload.sub)}`, {
+    method: 'PUT',
+    apiKey: serviceRoleKey,
+    bearer: serviceRoleKey,
+    body: { app_metadata: { roles: initialRoles } },
+  });
   progress.fixtureRestored = true;
 
   return {
@@ -340,7 +342,10 @@ async function main() {
     issuerMatches: initial.issuerMatches && refreshed.issuerMatches,
     roleClaimMatches: initial.roleClaimMatches && refreshed.roleClaimMatches,
     signatureVerifiedAgainstJwks: initial.signatureValid && refreshed.signatureValid,
-    jwks: { publicOnly: initial.jwksPublicOnly && refreshed.jwksPublicOnly, keyCount: initial.jwksKeyCount },
+    jwks: {
+      publicOnly: initial.jwksPublicOnly && refreshed.jwksPublicOnly,
+      keyCount: initial.jwksKeyCount,
+    },
     claimNames: initial.topLevelClaimNames,
     appMetadataClaimNames: initial.appMetadataClaimNames,
     claims: {
