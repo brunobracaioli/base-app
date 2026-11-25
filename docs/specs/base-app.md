@@ -68,7 +68,7 @@ no núcleo vale para todas elas.
 | Observabilidade | Logs JSON, correlation ID, OpenTelemetry, Sentry, auditoria | [0009](../adr/0009-observability.md) |
 | Personalização do template | `product.config.ts` validado + script de bootstrap | [0010](../adr/0010-template-customization-product-config.md) |
 | Modelo de conta | B2C: o usuário é o próprio tenant | [0011](../adr/0011-b2c-user-as-tenant.md) |
-| CI/CD e release | GitHub Actions, Vercel Deployment Checks, EAS Workflows | [0012](../adr/0012-ci-cd-and-release.md) |
+| CI/CD e release | Gate local/KVM com evidência por commit/tree; aprovações de release separadas | [0015](../adr/0015-local-and-kvm-quality-gates.md) |
 | Núcleo extensível | Pontos de extensão explícitos para versões derivadas | [0013](../adr/0013-extensible-core.md) |
 | Configuração do Supabase | `supabase/config.toml` gerado a partir de `config.base.toml` e fragmentos em `config.d/` | [0014](../adr/0014-generated-supabase-config.md) |
 
@@ -937,28 +937,29 @@ Isolamento entre apps e ambientes:
 
 ### 3.11 CI/CD
 
+Executor definido pelo dono: local ou KVM existente, sem GitHub Actions
+(ADR 0015; spec `local-quality-gates.md`). As operações de release da tabela
+são desenho para as ondas correspondentes, não funcionalidades já entregues.
+
 | Pipeline | Gatilho | Passos |
 |----------|---------|--------|
-| `ci.yml` | toda PR e push na `main` | install (lockfile congelado) → lint + format → typecheck → unit → dependency-cruiser → drift do OpenAPI → `supabase start` + migrations + pgTAP + drift dos tipos Kysely + integração → gitleaks → Semgrep → osv-scanner → zizmor (workflows) → `supabase:config:check` → `db:lint-migrations` → `vercel:check` |
+| `pnpm ci:local` | execução em checkout limpo antes de publicar resultado do PR | install congelado → lint/format/tipos/testes → arquitetura → geração/drift → invariantes → gitleaks/Semgrep/OSV/zizmor → recibo SHA/tree; gates de banco a partir da onda 2 |
 | Vercel | Git integration | preview por PR; produção na `main` só depois do CI verde (Deployment Checks) |
-| `db-migrate.yml` | merge na `main` que altera `supabase/migrations` | `supabase db push --db-url` com o papel `migrator` em staging → aprovação manual (GitHub Environment) → produção |
+| Gate de migration local/KVM | execução explicitamente autorizada sobre commit validado da `main` | papel `migrator` em staging → evidência/revisão → aprovação humana separada → produção |
 | EAS Workflows | tag `mobile-v*` | build iOS e Android → submit para TestFlight e trilha interna; `runtimeVersion` por fingerprint |
-| `release-ota.yml` | tag `mobile-v*` ou manual, só de commit da `main` | `protections` → `build` (instala dependências, **sem segredo**, gera o bundle com `expo export` e o hash SHA-256) → `sign-and-publish` (Environment `release` com aprovação; **não instala dependências do app nem roda scripts de pacote**; confere o hash; publica com `eas update --skip-bundler`) |
+| Gate OTA local/KVM | autorização explícita, só de commit validado da `main` | build sem segredo e hash do artefato → aprovação humana → contexto isolado de assinatura/publicação, sem instalação de dependências do app |
 | Deployment Check | cada preview | confere os cabeçalhos de segurança da API e da página `/account-deletion` (RNF-09) antes da promoção |
 
 Controles do repositório (G2 do threat model), como código e verificados:
 
-- `.github/security-baseline.json` descreve o esperado: Environments `production`
-  (`db-migrate.yml`), `production-config` (`app-config-set.yml`) e `release` (assinatura OTA),
-  cada um com revisores obrigatórios, `prevent_self_review` e só a branch `main`; ruleset da
-  `main` (PR com 1 aprovação e revisão dos `CODEOWNERS`, status do CI, sem force push nem
+- `.github/security-baseline.json` descreve o esperado: ruleset da
+  `main` (PR com 1 aprovação e revisão dos `CODEOWNERS`, status `CI / local`, sem force push nem
   exclusão); ruleset de tags `mobile-v*` e `v*` (só administradores criam, alteram e apagam);
   secret scanning e push protection; relato privado de vulnerabilidade.
-- `pnpm security:doctor` lê o baseline e confere por `gh api` (somente leitura). Roda como
-  primeiro job (`protections`, `permissions: contents: read, actions: read`) de
-  `db-migrate.yml`, `app-config-set.yml` e `release-ota.yml`, e falha se o Environment não
-  tiver revisores ou se faltar ruleset da `main` ou das tags. O que a API não deixa o
-  `GITHUB_TOKEN` ver fica na lista `manual` do baseline e é impresso, sem falhar o job.
+- `pnpm security:doctor` lê o baseline e confere por `gh api` (somente leitura),
+  separado do gate local sem credenciais. Falha se faltar controle obrigatório;
+  o que a API oculta vira item manual. O padrão local não exige Environments de
+  Actions, mas o doctor consegue validar baselines que os declarem.
 - `pnpm bootstrap:init` mostra o plano, pede confirmação e aplica o baseline com `gh api`, com o
   login do próprio `gh` do operador (nenhum token é guardado), e roda o `security:doctor` em
   seguida. `--skip-github` só imprime o checklist de `docs/how-to/github-protections.md`.
@@ -966,9 +967,9 @@ Controles do repositório (G2 do threat model), como código e verificados:
   `packages/config/`, `vercel.json`, `apps/web/src/platform/auth/` e `docs/security/`. O CI roda `zizmor` e
   falha em `pull_request_target`, injeção de expressão e `permissions` ausente.
 
-Actions pinadas por SHA, `permissions: contents: read` por padrão. O Supabase CLI e o EAS
-exigem tokens estáticos (sem OIDC); ficam em GitHub Environments com aprovação, escopo mínimo
-e rotação trimestral (ADR 0012). pnpm 12 com `allowBuilds` explícito,
+Scanners e dependências fixados por versão/checksum. Segredos de operações remotas
+ficam fora do executor de testes, em contexto de release aprovado, com escopo mínimo
+e rotação trimestral (ADR 0015). pnpm 12 com `allowBuilds` explícito,
 `strictDepBuilds: true` e `minimumReleaseAge: 1440` em `pnpm-workspace.yaml`.
 
 ### 3.12 Observabilidade

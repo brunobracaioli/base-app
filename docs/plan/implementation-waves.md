@@ -53,7 +53,7 @@ merge de uma por vez.
 - **Objetivo**: repositório pronto para receber código, com qualidade e segurança no CI desde
   o primeiro commit.
 - **Specs/ADRs**: base-app §3.3, §3.4.2–3.4.3, §3.5, §3.9, §3.11; identity-and-auth §3.7;
-  ADRs 0001, 0007, 0010, 0012, 0013, 0014.
+  local-quality-gates; ADRs 0001, 0007, 0010, 0012 (histórico), 0013, 0014, 0015.
 - **Escopo**:
   - `package.json` raiz, `pnpm-workspace.yaml`, `turbo.json`, `.nvmrc`, `.npmrc` (pnpm com
     `allowBuilds` explícito, `strictDepBuilds: true` e `minimumReleaseAge: 1440` em
@@ -69,23 +69,24 @@ merge de uma por vez.
     `extensions.ts` vazio + testes.
   - `packages/contracts`: schema de erro RFC 9457, contrato de `GET /v1/health`,
     `extensions/index.ts` vazio, gerador de OpenAPI e checagem de drift.
-  - `.github/workflows/ci.yml` (Actions pinadas por SHA, `permissions: contents: read`),
-    `.github/dependabot.yml`, `.gitignore`, `.env.example` sem valores, pre-commit com
+  - `pnpm ci:local` (executor local/KVM, recibo por commit/tree, fail-fast e versões
+    fixadas; sem GitHub Actions), `.github/dependabot.yml`, `.gitignore`, `.env.example` sem valores, pre-commit com
     gitleaks, regras Semgrep do projeto (`SET` de sessão, `sql.raw`, `sql.lit`,
     `console.*`, `insert into audit.events` fora de `platform/audit`).
   - Regras de lint de base-app §3.5: `no-purge-account-outside-privacy`, `no-direct-jwt-verify`,
     `no-dynamic-log-message`, `webhook-schemas-only-in-webhook-routes`.
-  - Proteções do repositório como código (ADR 0012): `.github/security-baseline.json`,
-    `pnpm security:doctor` (somente leitura, via `gh api`; o implementador confirma o que o
-    `GITHUB_TOKEN` enxerga e registra no ADR 0012), `CODEOWNERS`, `zizmor` no CI, `SECURITY.md`.
+  - Proteções do repositório como código (ADR 0015): `.github/security-baseline.json`,
+    `pnpm security:doctor` (somente leitura, via `gh api`; distingue controles visíveis,
+    ausentes e manuais), `CODEOWNERS`, `zizmor` no gate, `SECURITY.md`.
   - `packages/tooling`: `pnpm supabase:config:check` (invariantes do `config.toml` gerado e
     marcador `# allow-override`; identity-and-auth.md §3.7) e `pnpm db:lint-migrations` (migrations
     de extensão não tocam schema do núcleo; só as exceções de base-app §3.4.2) e `pnpm vercel:check`
-    (allowlist de chaves de topo do `vercel.json`); ambos no `ci.yml`.
+    (allowlist de chaves de topo do `vercel.json`); ambos no `ci:local`.
 - **Critérios de aceite**:
   - `pnpm install --frozen-lockfile && pnpm turbo run lint typecheck test` termina com 0.
-  - `pnpm security:doctor` falha contra um repositório sem Environment com revisores ou sem ruleset
-    da `main` e das tags (teste com respostas gravadas da API) e `zizmor` barra um workflow de
+  - `pnpm security:doctor` falha contra um repositório sem os controles que o baseline exige
+    (rulesets da `main`/tags; Environments só quando explicitamente declarados em teste)
+    e `zizmor` barra um workflow de
     teste com `pull_request_target`.
   - `db:lint-migrations` reprova, em migration `_ext-`, `create table audit.x`, `grant select on
     identity.profiles`, `create policy` em `audit.events` e `create trigger` em `auth.users`, e
@@ -103,10 +104,12 @@ merge de uma por vez.
   - `pnpm contracts:openapi && git diff --exit-code docs/reference/openapi.yaml` termina com 0.
   - Um `product.config.ts` inválido faz o teste de `packages/config` falhar com a mensagem do
     Zod.
-  - O `ci.yml` roda gitleaks, Semgrep e osv-scanner.
-  - Nenhum workflow usa action pinada por tag.
+  - `pnpm ci:local` roda gitleaks, Semgrep e osv-scanner, com versões verificadas.
+  - Não existe workflow executável de GitHub Actions; uma falha interrompe o gate e
+    checkout sujo/alterado durante a execução não atesta o commit.
   - Lint: `.strip()` passa só dentro de `webhooks/`; `.strict()` ausente em body fora dela falha.
-- **Verificação**: `pnpm install --frozen-lockfile && pnpm turbo run lint typecheck test && pnpm contracts:openapi && git diff --exit-code docs/reference/openapi.yaml && ! grep -rE "uses: [^@]+@v[0-9]" .github/workflows`
+- **Verificação**: `pnpm ci:local` em checkout limpo, com todos os gates aprovados e
+  recibo referente ao SHA/tree testado; contrato em `docs/specs/local-quality-gates.md`.
 
 ## Onda 1 — Plataforma da API
 

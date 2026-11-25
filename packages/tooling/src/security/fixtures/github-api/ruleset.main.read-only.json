@@ -20,7 +20,7 @@
     {
       "type": "required_status_checks",
       "parameters": {
-        "required_status_checks": [{ "context": "CI / verify" }]
+        "required_status_checks": [{ "context": "CI / local" }]
       }
     },
     { "type": "deletion" },

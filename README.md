@@ -27,20 +27,18 @@ Upstash Redis · Resend · TypeScript strict · pnpm + Turborepo.
 
 ## Por onde começar
 
-Para verificar a fundação, use o Node indicado em `.nvmrc` e o pnpm fixado em
-`package.json`. Com nvm e Corepack disponíveis:
+Para verificar a fundação, prepare as ferramentas fixadas no
+[guia do gate local/KVM](docs/how-to/local-quality-gate.md). Com nvm e Corepack disponíveis:
 
 ```bash
 nvm install
 nvm use
 corepack enable
-pnpm install --frozen-lockfile
-pnpm turbo run lint typecheck test
-pnpm architecture:check
-pnpm format:check
+pnpm ci:local
 ```
 
-Esses testes locais não exigem credenciais. O `.env.example` contém somente nomes
+GitHub Actions não é usado. O gate gera recibo por commit/tree e os testes não
+exigem credenciais. O `.env.example` contém somente nomes
 de variáveis, sem valores. A configuração e a entrega de e-mail do Supabase serão
 validadas na onda 2; a configuração gerada atual não comprova um serviço em operação.
 

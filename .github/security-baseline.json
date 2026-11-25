@@ -1,28 +1,6 @@
 {
   "schemaVersion": 1,
-  "environments": [
-    {
-      "name": "production",
-      "reviewersRequired": true,
-      "preventSelfReview": true,
-      "deploymentBranches": ["main"],
-      "deploymentPolicyType": "branch"
-    },
-    {
-      "name": "production-config",
-      "reviewersRequired": true,
-      "preventSelfReview": true,
-      "deploymentBranches": ["main"],
-      "deploymentPolicyType": "branch"
-    },
-    {
-      "name": "release",
-      "reviewersRequired": true,
-      "preventSelfReview": true,
-      "deploymentBranches": ["main"],
-      "deploymentPolicyType": "branch"
-    }
-  ],
+  "environments": [],
   "rulesets": [
     {
       "id": "main",
@@ -38,7 +16,7 @@
         "approvals": 1,
         "codeOwnerReview": true
       },
-      "requiredStatusChecks": ["CI / verify"],
+      "requiredStatusChecks": ["CI / local"],
       "forbidBypassActors": true,
       "adminOnlyBypass": false
     },
@@ -70,15 +48,15 @@
     {
       "id": "ruleset-bypass-actors",
       "condition": "ruleset-bypass-actors",
-      "description": "Verify that main has no bypass actor and release-tag rulesets allow only repository administrators; GitHub omits bypass_actors from read-only ruleset responses."
+      "description": "Verify that main has no bypass actor and release-tag rulesets allow only repository administrators; GitHub may omit bypass_actors from responses available to a read-only API caller."
     },
     {
       "id": "secret-scanning-and-push-protection",
-      "description": "Before making a derived repository public, confirm both settings in Settings > Code security and analysis; the workflow token cannot inspect these repository administration settings."
+      "description": "Before making a derived repository public, confirm both settings in Settings > Code security and analysis; the authenticated, read-only API caller used by security:doctor cannot inspect these repository administration settings."
     },
     {
       "id": "private-vulnerability-reporting",
-      "description": "Before making a derived repository public, confirm private vulnerability reporting is enabled in the Security tab; the workflow token cannot inspect this setting."
+      "description": "Before making a derived repository public, confirm private vulnerability reporting is enabled in the Security tab; the authenticated, read-only API caller used by security:doctor cannot inspect this setting."
     }
   ]
 }

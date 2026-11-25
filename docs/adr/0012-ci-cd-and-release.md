@@ -1,6 +1,6 @@
 # ADR 0012 — CI/CD e release
 
-- **Status:** proposed
+- **Status:** superseded quanto ao executor por [ADR 0015](0015-local-and-kvm-quality-gates.md)
 - **Data:** 2026-11-24
 
 ## Contexto
@@ -11,6 +11,10 @@ copiado por alunos: o que ele fizer por padrão vira o hábito deles, e a cadeia
 app (build, assinatura, envio às lojas, OTA) é um alvo de ataque de cadeia de suprimentos.
 
 ## Decisão
+
+> Registro histórico. O dono substituiu GitHub Actions por execução local/KVM
+> no ADR 0015. Os mecanismos específicos de Actions abaixo não devem ser
+> implementados; as propriedades de segurança e aprovação continuam exigidas.
 
 ### Integração contínua
 

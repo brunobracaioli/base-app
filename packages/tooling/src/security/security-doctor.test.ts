@@ -18,9 +18,19 @@ function fixture<T>(name: string): T {
   return JSON.parse(readFileSync(resolve(fixtureDirectory, name), 'utf8')) as T;
 }
 
-const baseline = JSON.parse(
+const defaultBaseline = JSON.parse(
   readFileSync(resolve(repositoryRoot, '.github/security-baseline.json'), 'utf8'),
 ) as SecurityBaseline;
+const baseline: SecurityBaseline = {
+  ...defaultBaseline,
+  environments: ['production', 'production-config', 'release'].map((name) => ({
+    name,
+    reviewersRequired: true,
+    preventSelfReview: true,
+    deploymentBranches: ['main'],
+    deploymentPolicyType: 'branch',
+  })),
+};
 
 function fixtureApi(overrides: Partial<GitHubSecurityApi> = {}): GitHubSecurityApi {
   const environments = fixture<unknown[]>('environments.complete.json');
@@ -90,6 +100,31 @@ function writableApi(rulesets = writableRulesetFixtures()): GitHubSecurityApi {
 }
 
 describe('inspectRepositorySecurity', () => {
+  it('keeps Environments optional in the default baseline while retaining branch and tag rulesets', () => {
+    expect(defaultBaseline.environments).toEqual([]);
+    expect(defaultBaseline.rulesets.map((ruleset) => ruleset.include)).toEqual([
+      ['refs/heads/main'],
+      ['refs/tags/mobile-v*'],
+      ['refs/tags/v*'],
+    ]);
+    expect(defaultBaseline.rulesets[0]?.requiredStatusChecks).toEqual(['CI / local']);
+  });
+
+  it('skips the Environment endpoint when the baseline has none and still validates rulesets', async () => {
+    const listEnvironments = vi.fn(async () => {
+      throw new Error('The unused Environment endpoint must not be called.');
+    });
+    const result = await inspectRepositorySecurity(
+      'example/base-app',
+      defaultBaseline,
+      fixtureApi({ listEnvironments }),
+    );
+
+    expect(listEnvironments).not.toHaveBeenCalled();
+    expect(result.failures).toEqual([]);
+    expect(result.passes.filter((message) => message.startsWith('Ruleset "'))).toHaveLength(3);
+  });
+
   it('reports checks hidden from read-only API responses as manual, never as verified', async () => {
     const result = await inspectRepositorySecurity('Example/Base-App', baseline, fixtureApi());
 
@@ -295,7 +330,7 @@ describe('inspectRepositorySecurity', () => {
     const result = await inspectRepositorySecurity('example/base-app', baseline, api);
 
     expect(result.failures).toContain(
-      'Ruleset "main" does not require CI status check(s): CI / verify.',
+      'Ruleset "main" does not require CI status check(s): CI / local.',
     );
   });
 

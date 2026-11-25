@@ -4,11 +4,13 @@
 
 - **Fase:** onda 0 implementada e revisada localmente em 2026-11-24, na branch
   `feat/w0-foundation`: instalação congelada, 9 tarefas do Turbo, 119 testes,
-  arquitetura, formatação e scanners locais passaram. O status permanece ⬜ pelas
-  pendências de verificação abaixo. PR #1 mergeado na `main` (`9917b1e`).
-- **Próximo passo:** revisar o relatório da onda 0, resolver as proteções do GitHub
-  e validar o workflow real quando houver autorização de push. Não iniciar outra
-  onda como se essas pendências estivessem concluídas. Nenhuma onda posterior iniciada.
+  arquitetura, formatação e scanners locais passaram. Push e PR autorizados pelo dono;
+  [PR #2](https://github.com/brunobracaioli/base-app/pull/2) aberto. O dono substituiu
+  Actions por execução local/KVM (ADR 0015); o status segue ⬜ até o novo comando
+  integrado gerar o recibo final. PR #1 mergeado na `main` (`9917b1e`).
+- **Próximo passo:** validar `pnpm ci:local` em checkout limpo, publicar a evidência
+  local do SHA no PR #2 e fechar a onda 0. Proteções de release e banco da onda 2
+  são gates separados. Nenhuma onda posterior iniciada.
 - **Plano/evidências:** [onda 0](docs/plan/wave-0-execution.md). Quatro frentes de
   implementação e uma revisão independente configuradas com Luna/xhigh; instalação
   e lockfile centralizados. Commit de decisões de spec: `07a74b5`.
@@ -36,14 +38,13 @@
 
 ## Decisões pendentes
 
-- Onda 0: a implementação local passou nos gates registrados, mas não foi
-  enviada ao GitHub; a execução real de Actions e a leitura com `GITHUB_TOKEN`
-  ainda não foram verificadas. O login do operador encontrou Environments ausentes
-  e rulesets indisponíveis no plano privado atual (403).
-- Configurar `production`, `production-config` e `release` com revisores,
-  bloqueio de autorrevisão e branch `main`; rulesets de `main`, `mobile-v*` e `v*`.
-  Confirmar um plano que comporte tanto rulesets quanto revisores em Environments
-  privados; a sessão não alterou plano, visibilidade, configuração remota ou secrets.
+- GitHub Actions foi desativado na API (`enabled: false`) por instrução do dono.
+  As tentativas anteriores, inclusive um `echo` isolado, terminaram em
+  `BuildFailed`/`startup_failure` sem jobs. Não serão usadas como gate do projeto.
+- Rulesets de `main`, `mobile-v*` e `v*` continuam sujeitos à disponibilidade
+  do plano privado. Antes de release, revisar a governança de código e as
+  aprovações operacionais; Environments de Actions não são requisito padrão
+  após o ADR 0015. Plano, visibilidade e secrets não foram alterados.
 - Docker Desktop sem integração com esta distribuição WSL. Os gates de banco da
   onda 2 requerem Docker; nenhum banco remoto foi criado ou alterado.
 - `.env.example` só declara `SMTP_HOST` e `RESEND_SMTP_PASSWORD`, sem valores.

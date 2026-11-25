@@ -517,12 +517,13 @@ export async function inspectRepositorySecurity(
     return result;
   }
 
-  const environmentsResult = await api
-    .listEnvironments(normalizedRepository)
-    .catch((error: unknown) => {
-      recordIssue(result, asErrorMessage(error, 'Cannot inspect required GitHub Environments'));
-      return undefined;
-    });
+  const environmentsResult =
+    baseline.environments.length === 0
+      ? undefined
+      : await api.listEnvironments(normalizedRepository).catch((error: unknown) => {
+          recordIssue(result, asErrorMessage(error, 'Cannot inspect required GitHub Environments'));
+          return undefined;
+        });
 
   if (environmentsResult !== undefined) {
     const parsedEnvironments = EnvironmentsResponseSchema.safeParse(environmentsResult);

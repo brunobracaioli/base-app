@@ -4,6 +4,11 @@ Data: 2026-11-24. Branch: `feat/w0-foundation`, criada da `main` após o merge
 autorizado do PR #1 (`9917b1e`). Escopo: somente a fundação descrita em
 [implementation-waves.md](implementation-waves.md#onda-0--fundação-do-monorepo).
 
+**Executor vigente:** local/KVM, por instrução explícita do dono depois da
+abertura do PR #2. GitHub Actions está desativado no repositório. ADR 0015 e
+`docs/specs/local-quality-gates.md` substituem o executor inicial; os gates
+locais e os controles de release continuam separados.
+
 ## Paralelismo do roadmap
 
 - Depois de 0: 1, 2 e 3 podem avançar em worktrees separadas.
@@ -54,9 +59,8 @@ os demais não escrevem o lockfile. Testes acompanham cada implementação.
     permissões mínimas; schemas de body estritos, `.strip()` só em webhooks.
 
 pgTAP e drift dos tipos Kysely dependem dos artefatos da onda 2. A onda 0 não
-cria implementações vazias que retornem sucesso para esses gates. A ausência
-deles será registrada no relatório e impede afirmar a verificação completa
-exigida pelo prompt desta sessão.
+cria implementações vazias que retornem sucesso para esses gates. Eles permanecem
+explicitamente fora da verificação da fundação e serão exigidos na onda correspondente.
 
 ## Decisões aprovadas e limitações
 
@@ -146,9 +150,11 @@ da onda 1.
 
 ## Limites, ação humana e próxima onda
 
-- A onda não foi marcada ✅. O código está validado localmente, mas o doctor
-  remoto reprova e não houve execução de Actions com o token do workflow.
-  Fixtures não substituem essa prova. Nenhum push ou PR da implementação foi feito.
+- Depois do relatório local, o dono autorizou push e PR. O código está no
+  [PR #2](https://github.com/brunobracaioli/base-app/pull/2). Actions apresentou
+  `startup_failure` antes dos jobs, inclusive no diagnóstico isolado de um
+  único `echo` (run 45511970833). O dono determinou execução local/KVM; a
+  conclusão da onda passa a exigir o recibo de `pnpm ci:local`, não Actions.
 - pgTAP, `supabase start`, migrations aplicadas e drift Kysely não foram
   executados: os artefatos são da onda 2 e o Docker desta distribuição está
   indisponível. O guard TOML não prova boot do Auth, entrega SMTP ou config push.
@@ -157,10 +163,9 @@ da onda 1.
   a onda 2. O parser SQL está alinhado ao PostgreSQL 17; corpos PL/pgSQL não
   constituem prova de autorização pelo parser e continuam sujeitos à revisão
   e aos testes de catálogo/permissões da onda 2.
-- O dono precisa resolver os Environments e rulesets descritos no baseline,
-  conferir os itens manuais e autorizar a execução real de CI em etapa futura.
-  Não basta contratar um plano que só ofereça rulesets; revisores obrigatórios
-  em Environments privados também precisam estar disponíveis.
+- A governança de código (rulesets/revisão) e as aprovações de operações remotas
+  continuam como gates de release. O baseline local não exige Environments de
+  Actions, e nenhuma contratação de plano ou publicação do repositório foi feita.
 - Não há segredo necessário para os testes locais. Para a etapa SMTP, preencher
   `SMTP_HOST` e `RESEND_SMTP_PASSWORD` em `.env.local`/secret manager conforme o
   ambiente, sem compartilhar valores no chat. O template mantém SMTP customizado
