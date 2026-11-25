@@ -401,8 +401,7 @@ alter function ops.purge_expired() owner to ops;
 revoke ops from postgres;
 revoke create on schema ops from ops;
 create function identity.before_user_created(event jsonb) returns jsonb
-language plpgsql security definer
-set search_path = ''
+language plpgsql security definer set search_path = ''
 set lock_timeout = '1500ms'
 set statement_timeout = '1750ms'
 as $$
