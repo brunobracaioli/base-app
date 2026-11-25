@@ -21,7 +21,7 @@ corrigir diretamente a onda 2.
 | W1 `pnpm ci:local` | 18 gates aprovados no commit limpo `cf096e0`; 216 testes do workspace |
 | W1 build e HTTP em modo de produção | API, HTML e asset passaram; nonce do HTML coincide com CSP |
 | W2 instalação congelada | Passou com Node 24.22.3/pnpm 12.23.0 e política de supply chain preservada |
-| W2 `pnpm turbo run lint typecheck test` | 14 tarefas aprovadas; 241 testes passaram, 1 teste condicionado à conexão real não roda nesse comando |
+| W2 `pnpm turbo run lint typecheck test` | 14 tarefas aprovadas; suíte ampliada com 10 testes da guarda SQL; 1 teste condicionado à conexão real não roda nesse comando |
 | W2 `pnpm --filter web build` | Passou |
 | W2 `pnpm architecture:check` | Passou: 149 módulos, 374 dependências |
 | W2 config gerada, invariantes e lint de migrations | Passaram; sem edição manual do `config.toml` fonte |
@@ -29,7 +29,7 @@ corrigir diretamente a onda 2.
 | W2 `supabase test db` | Reprovou; o log registra os critérios de segurança/funcionalidade ainda não atendidos |
 | W2 `pnpm db:types` e verificação de drift | Passaram contra o banco real; arquivo regenerado manteve o mesmo SHA-256 |
 | W2 harness real pelo pooler TLS | Passou: claims, papéis, rollback, limpeza, microssegundos e auditoria atômica |
-| W3 snapshot parcial: lint, typecheck e Jest/RNTL | Passaram; 11 suítes, 51 testes |
+| W3 snapshot parcial: lint, typecheck e Jest/RNTL | Passaram; suíte ampliada com regressão para campos opcionais vazios |
 | W3 Expo config, exports e prebuilds | Android/iOS passaram; não são builds EAS nem prova em dispositivo |
 | W3 worktree completa | Teste e typecheck ainda falham porque `extensions/api.ts` está ausente; seu teste foi preservado fora do commit parcial |
 
@@ -111,6 +111,11 @@ Caminhos abaixo relativos a `apps/mobile/` na branch W3.
   completo também permanece sem aceite enquanto o hook de cadastro falhar.
 - W3: decidir os resultados inspecionáveis de `withPreviousSession<T>`; fornecer
   conta/projeto EAS e a configuração real de assinatura para os builds.
+- W3: oito ocorrências vulneráveis em dependências transitivas foram corrigidas
+  com pins e patch mínimo do EAS CLI (`71845f4`); o scan voltou a não apontar
+  vulnerabilidades. `5513866` corrige o boot com campos opcionais vazios. O aviso
+  do peer TypeScript do loader legado EAS é registrado no ADR 0002; a leitura
+  local da configuração e a mesclagem corrigida foram exercitadas sem conta.
 - Variáveis da API estão no `.env.example` raiz; variáveis mobile e localização
   de `.env.local` estão em `apps/mobile/README.md` e `.env.example` da branch W3.
   Segredos ficam no ambiente local/gerenciador, nunca no chat.

@@ -16,7 +16,7 @@
     "security:doctor": "tsx packages/tooling/src/security/security-doctor.ts",
     "supabase:config": "tsx packages/tooling/src/guards/supabase-config-cli.ts",
     "supabase:config:check": "tsx packages/tooling/src/guards/supabase-config-cli.ts --check",
-    "db:lint-migrations": "tsx packages/tooling/src/guards/db-lint-migrations-cli.ts",
+    "db:lint-migrations": "tsx packages/tooling/src/guards/db-lint-migrations-cli.ts && tsx packages/tooling/src/guards/audit-writes-cli.ts",
     "db:types": "pnpm --filter web db:types",
     "db:fixtures": "tsx packages/tooling/src/db/generate-pgtap-fixtures.ts",
     "vercel:check": "tsx packages/tooling/src/guards/vercel-config-cli.ts"

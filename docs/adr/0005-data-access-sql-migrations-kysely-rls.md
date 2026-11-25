@@ -154,3 +154,14 @@ Tipos são gerados do banco real com nomes de tabela qualificados. O mapeamento
 explícito de `timestamp`/`timestamptz` para `string` coincide com os parsers do
 pool e preserva microssegundos; `--date-parser string` sozinho não altera esses
 dois tipos no kysely-codegen 0.20.0.
+
+**Guarda estática de auditoria.** Os inserts atômicos de `app_config.set_setting`
+e `ops.purge_expired` já são exigidos pelas specs. As três migrations que os
+definem têm exceção somente à regra SQL genérica de insert do Semgrep; as
+outras regras continuam ativas. `db:lint-migrations` também usa o parser real
+de PostgreSQL 17 para checar todas as migrations: só essas assinaturas, com
+retorno void, PL/pgSQL, SECURITY DEFINER e search_path vazio, podem inserir
+auditoria. Inserts avulsos, outra função, overload, contexto forjado por
+comentário e search_path inseguro reprovam. Ownership e ACL continuam sendo
+verificados no pgTAP. A regra de escrita da aplicação por `platform/audit`
+permanece sem exceções novas.
