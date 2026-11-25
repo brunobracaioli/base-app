@@ -1,0 +1,8 @@
+# Repository and release controls require review by the repository owner.
+/.github/ @brunobracaioli
+/supabase/migrations/ @brunobracaioli
+/supabase/config.base.toml @brunobracaioli
+/packages/config/ @brunobracaioli
+/vercel.json @brunobracaioli
+/apps/web/src/platform/auth/ @brunobracaioli
+/docs/security/ @brunobracaioli

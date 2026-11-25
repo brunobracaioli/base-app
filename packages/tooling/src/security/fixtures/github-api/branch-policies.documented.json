@@ -1,0 +1,5 @@
+{
+  "production": [{ "id": 1, "name": "main" }],
+  "production-config": [{ "id": 2, "name": "main" }],
+  "release": [{ "id": 3, "name": "main" }]
+}

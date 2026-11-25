@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "environments": [],
+  "rulesets": [
+    {
+      "id": "main",
+      "target": "branch",
+      "include": ["refs/heads/main"],
+      "requiredRuleTypes": [
+        "pull_request",
+        "required_status_checks",
+        "deletion",
+        "non_fast_forward"
+      ],
+      "pullRequest": {
+        "approvals": 1,
+        "codeOwnerReview": true
+      },
+      "requiredStatusChecks": ["CI / local"],
+      "forbidBypassActors": true,
+      "adminOnlyBypass": false
+    },
+    {
+      "id": "mobile-release-tags",
+      "target": "tag",
+      "include": ["refs/tags/mobile-v*"],
+      "requiredRuleTypes": ["creation", "update", "deletion"],
+      "requiredStatusChecks": [],
+      "forbidBypassActors": false,
+      "adminOnlyBypass": true
+    },
+    {
+      "id": "source-release-tags",
+      "target": "tag",
+      "include": ["refs/tags/v*"],
+      "requiredRuleTypes": ["creation", "update", "deletion"],
+      "requiredStatusChecks": [],
+      "forbidBypassActors": false,
+      "adminOnlyBypass": true
+    }
+  ],
+  "manual": [
+    {
+      "id": "deployment-branch-policy-type",
+      "condition": "environment-policy-type",
+      "description": "Verify that each production, production-config, and release Environment is restricted to branch main; GitHub's branch-policy API may omit whether a matching name targets a branch or tag."
+    },
+    {
+      "id": "ruleset-bypass-actors",
+      "condition": "ruleset-bypass-actors",
+      "description": "Verify that main has no bypass actor and release-tag rulesets allow only repository administrators; GitHub may omit bypass_actors from responses available to a read-only API caller."
+    },
+    {
+      "id": "secret-scanning-and-push-protection",
+      "description": "Before making a derived repository public, confirm both settings in Settings > Code security and analysis; the authenticated, read-only API caller used by security:doctor cannot inspect these repository administration settings."
+    },
+    {
+      "id": "private-vulnerability-reporting",
+      "description": "Before making a derived repository public, confirm private vulnerability reporting is enabled in the Security tab; the authenticated, read-only API caller used by security:doctor cannot inspect this setting."
+    }
+  ]
+}

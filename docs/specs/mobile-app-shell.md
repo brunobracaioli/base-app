@@ -182,7 +182,7 @@ Erros de rede e de contrato nunca mostram texto técnico ao usuário.
   GitHub Environment `release`, com aprovação). Quem comprometer a conta do EAS não consegue
   publicar JavaScript para todos os usuários.
 - **Pipeline de assinatura em dois jobs** (`release-ota.yml`, ADR 0012):
-  1. `build`: instala dependências (lockfile congelado, `onlyBuiltDependencies`), roda
+  1. `build`: instala dependências (lockfile congelado, `allowBuilds` explícito), roda
      `expo export` e publica o `dist/` e o SHA-256 como artefato. **Não tem acesso a segredo
      nenhum.**
   2. `sign-and-publish`: Environment `release`, com aprovação humana. **Não roda `pnpm install`

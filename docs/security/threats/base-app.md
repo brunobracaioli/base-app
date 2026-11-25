@@ -207,7 +207,7 @@ derivados (merge de `upstream`).
 | MB-5 | PLATFORM | T | `Linking.openURL` com URL vinda de SDK ou de resposta sem validação | B/M | URLs da loja vêm do config (AC-5); `openExternalUrl` exige `https` e allowlist de host, e `managementURL` fora dela cai no link público da loja (shell SH-N10). **G21 resolvida** |
 | MB-6 | NETWORK | I | Tráfego sem TLS ou com cleartext habilitado; sem pinning | B/A | Só HTTPS pelos clientes; pinning fora (R8); `usesCleartextTraffic: false`, sem exceção de ATS, testado no `app.config.ts` e no manifesto de release (shell SH-N11). **G21 resolvida** |
 | MB-7 | CODE | T | App reempacotado ou automatizado com as chaves públicas | A/M | Sem segredo no bundle (base-app RNF-05); sem attestation (residual R8): o que tem custo no servidor é protegido por autenticação, cota e rate limit |
-| MB-8 | CODE | T | Dependência nativa ou SDK comprometidos | B/A | `onlyBuiltDependencies`, `minimumReleaseAge`, osv-scanner (ADR 0012); plugins revisados (ADR 0002) |
+| MB-8 | CODE | T | Dependência nativa ou SDK comprometidos | B/A | `allowBuilds` explícito, `strictDepBuilds`, `minimumReleaseAge: 1440`, osv-scanner (ADR 0012); plugins revisados (ADR 0002) |
 | MB-9 | PRIVACY | I | SDKs coletam mais do que o declarado no privacy manifest e no Data Safety | M/M | Checklist de loja (base-app §2.4); sem analytics, sem ATT, sem push (ADR 0002) |
 
 ### 3.9 Extensões (TB11) — código confiável no mesmo processo
@@ -235,7 +235,7 @@ regras de fronteira. Os itens abaixo cobrem extensão mal escrita ou maliciosa.
 |---|--------|---------|-----|------------|
 | CI-1 | E | Environments com revisor, restrição de branch, ruleset de tags e branch protection não viajam com "Use this template"; um Environment inexistente citado no workflow é criado sem proteção | A/A | `.github/security-baseline.json`, `pnpm security:doctor` no CI, aplicado pelo `bootstrap:init` com confirmação, job `protections` nos workflows sensíveis (base-app §3.11, ADR 0012). O que a API não permite ver fica na lista `manual`. **G2 resolvida** |
 | CI-2 | T | Injeção em workflow (título de PR, nome de branch, `pull_request_target`) e execução de código de fork com segredos | M/A | Actions por SHA, `permissions` mínimas, `zizmor` no CI (barra `pull_request_target` e injeção de expressão) (ADR 0012, base-app §3.11). **G2 resolvida** |
-| CI-3 | T | Pacote npm malicioso rouba segredos na instalação | M/A | `onlyBuiltDependencies`, `minimumReleaseAge`, job de install sem segredos, lockfile congelado (ADR 0012, ADR 0001) |
+| CI-3 | T | Pacote npm malicioso rouba segredos na instalação | M/A | `allowBuilds` explícito, `strictDepBuilds`, `minimumReleaseAge: 1440`, job de install sem segredos, lockfile congelado (ADR 0012, ADR 0001) |
 | CI-4 | E | Tokens estáticos de maior alcance: `SUPABASE_ACCESS_TOKEN`, URL do `migrator`, token de robô do Expo, `APP_CONFIG_ADMIN_DATABASE_URL` | M/Crít. | Exceções registradas, Environment com aprovação, escopo mínimo, rotação trimestral, `migrator` só DDL (ADR 0012, app-config §3.3) |
 | CI-5 | T | Chave de assinatura OTA exposta por um job que instala dependências | B/Crít. | Chave OTA só no job `sign-and-publish` (Environment `release`, sem instalação de dependências do app, `eas-cli` de lockfile próprio com `--ignore-scripts`) (shell §3.6, ADR 0012). **G3 resolvida** |
 | CI-6 | T | Quem tem escrita cria tag `mobile-v*` e dispara release | M/A | Ruleset de tags e aprovação (ADR 0012). Ver CI-1 |

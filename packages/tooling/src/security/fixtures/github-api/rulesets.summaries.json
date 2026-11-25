@@ -1,0 +1,26 @@
+[
+  {
+    "id": 11,
+    "name": "main",
+    "target": "branch",
+    "enforcement": "active",
+    "source_type": "Repository",
+    "source": "example/base-app"
+  },
+  {
+    "id": 12,
+    "name": "mobile-release-tags",
+    "target": "tag",
+    "enforcement": "active",
+    "source_type": "Repository",
+    "source": "example/base-app"
+  },
+  {
+    "id": 13,
+    "name": "source-release-tags",
+    "target": "tag",
+    "enforcement": "active",
+    "source_type": "Repository",
+    "source": "example/base-app"
+  }
+]
