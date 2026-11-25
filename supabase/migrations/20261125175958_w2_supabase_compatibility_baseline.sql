@@ -453,7 +453,7 @@ create function identity.count_unconfirmed_users() returns bigint
 language sql security definer set search_path = '' as $$
   select count(*)
   from auth.users u
-  where u.email is not null
+  where nullif(pg_catalog.btrim(u.email), '') is not null
     and u.email_confirmed_at is null
     and not coalesce(u.is_anonymous, false)
 $$;
@@ -471,7 +471,7 @@ begin
   with doomed as (
     select u.id
     from auth.users u
-    where u.email is not null
+    where nullif(pg_catalog.btrim(u.email), '') is not null
       and u.email_confirmed_at is null
       and not coalesce(u.is_anonymous, false)
       and u.created_at < clock_timestamp() - interval '3 days'
