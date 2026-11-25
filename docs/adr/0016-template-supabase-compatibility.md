@@ -57,7 +57,8 @@ uma hora e insere a reserva na mesma seção crítica; apenas 300 chamadas do ho
 podem ser aprovadas nessa janela. O hook valida o objeto e `user`, mas não
 depende de `user.email`, para aceitar contas anônimas sem e-mail. Evento
 malformado, lock/consulta que excede o limite ou falha de banco não libera o
-cadastro. A versão Auth `v2.198.0` invoca o hook fora da transação que cria o
+cadastro. A função limita a espera do lock a 1 500 ms e a instrução SQL a
+1 750 ms, antes do timeout de 2 s do Auth. A versão Auth `v2.198.0` invoca o hook fora da transação que cria o
 usuário; a fonte fixada está em
 [`signup.go`](https://github.com/supabase/auth/blob/v2.198.0/internal/api/signup.go)
 e [`hooks.go`](https://github.com/supabase/auth/blob/v2.198.0/internal/api/hooks.go).
