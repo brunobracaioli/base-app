@@ -2,15 +2,14 @@
 
 ## Status atual
 
-- **Fase:** onda 0 implementada e revisada localmente em 2026-11-24, na branch
-  `feat/w0-foundation`: instalação congelada, 9 tarefas do Turbo, 119 testes,
-  arquitetura, formatação e scanners locais passaram. Push e PR autorizados pelo dono;
+- **Fase:** onda 0 concluída e revisada localmente em 2026-11-24, na branch
+  `feat/w0-foundation`. `pnpm ci:local` aprovou 18 gates, 128 testes e 6 versões
+  de ferramentas em checkout limpo, com recibo atestável do commit `6750641`.
   [PR #2](https://github.com/brunobracaioli/base-app/pull/2) aberto. O dono substituiu
-  Actions por execução local/KVM (ADR 0015); o status segue ⬜ até o novo comando
-  integrado gerar o recibo final. PR #1 mergeado na `main` (`9917b1e`).
-- **Próximo passo:** validar `pnpm ci:local` em checkout limpo, publicar a evidência
-  local do SHA no PR #2 e fechar a onda 0. Proteções de release e banco da onda 2
-  são gates separados. Nenhuma onda posterior iniciada.
+  Actions por execução local/KVM (ADR 0015). PR #1 mergeado na `main` (`9917b1e`).
+- **Próximo passo:** revisar/integrar o PR #2 na `main`; depois, ondas 1/2/3 podem
+  começar em worktrees distintas. Proteções de release e banco da onda 2 são
+  gates separados. Nenhuma onda posterior iniciada.
 - **Plano/evidências:** [onda 0](docs/plan/wave-0-execution.md). Quatro frentes de
   implementação e uma revisão independente configuradas com Luna/xhigh; instalação
   e lockfile centralizados. Commit de decisões de spec: `07a74b5`.
@@ -22,7 +21,7 @@
 
 | Onda | Entrega | Status |
 |------|---------|--------|
-| 0 | Fundação do monorepo, tooling e CI | ⬜ |
+| 0 | Fundação do monorepo, tooling e CI | ✅ |
 | 1 | Plataforma da API | ⬜ |
 | 2 | Baseline do Supabase | ⬜ |
 | 3 | Casca do app mobile | ⬜ |

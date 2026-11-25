@@ -9,6 +9,27 @@ abertura do PR #2. GitHub Actions está desativado no repositório. ADR 0015 e
 `docs/specs/local-quality-gates.md` substituem o executor inicial; os gates
 locais e os controles de release continuam separados.
 
+## Encerramento vigente — executor local
+
+**Onda 0 concluída.** `pnpm ci:local` passou os 18 gates em checkout limpo
+do commit `6750641b5823c07f98d7a0ed95f2ef7be538817f`, incluindo 128 testes
+(7 de configuração, 7 de contratos, 114 de tooling), 9 tarefas do Turbo e
+as 6 versões de ferramentas fixadas. A fixture insegura foi rejeitada com
+exit 14 esperado; todos os gates registraram `passed: true`.
+
+Recibo dessa execução:
+`.artifacts/ci/2026-11-25T00-11-27-421Z-k9Sj5d/receipt.json`.
+Ele registra `result: passed`, checkout limpo, SHA/tree estáveis e
+`attestableCommit: true`. O status do PR será publicado somente após conferir
+o recibo do SHA final, incluindo este fechamento documental.
+
+O gate adicional de orquestração testa falha imediata, ausência de ferramentas,
+proveniência suja/alterada, ambiente sem tokens e ausência de workflows
+executáveis de Actions. O doctor não consulta Environments quando o baseline
+não os exige. Os passos originais de validação abaixo foram preservados como
+evidência da primeira implementação; o executor e o aceite vigentes são os
+do ADR 0015 e da spec `local-quality-gates.md`.
+
 ## Paralelismo do roadmap
 
 - Depois de 0: 1, 2 e 3 podem avançar em worktrees separadas.
@@ -99,9 +120,9 @@ Fontes de compatibilidade consultadas: [pnpm 11 — mudanças de configuração]
 [JSON Schema nativo do Zod](https://zod.dev/json-schema) e
 [changelog do Supabase](https://supabase.com/changelog.md).
 
-## Resultado local e critérios de aceite
+## Validação inicial e critérios de aceite
 
-Verificação final em 2026-11-24, Node 24.22.3 e pnpm 12.23.0. Comandos
+Primeira verificação em 2026-11-24, Node 24.22.3 e pnpm 12.23.0. Comandos
 executados pelo gerente no checkout integrado, após a revisão e as correções:
 
 | Comando/gate | Resultado observado |

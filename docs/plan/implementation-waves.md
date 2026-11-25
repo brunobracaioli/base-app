@@ -6,7 +6,7 @@
 
 | Onda | Entrega | Depende de | Paralela com | Status |
 |------|---------|------------|--------------|--------|
-| 0 | Fundação do monorepo, tooling e CI | — | — | ⬜ |
+| 0 | Fundação do monorepo, tooling e CI | — | — | ✅ |
 | 1 | Plataforma da API (`defineRoute`, erros, headers, logs, rate limit, idempotência, extensões) | 0 | 2, 3 | ⬜ |
 | 2 | Baseline do Supabase (config, papéis, auditoria, `pg_cron`, pgTAP, tipos Kysely) | 0 | 1, 3 | ⬜ |
 | 3 | Casca do app mobile (Expo Router, gates, i18n, tema, client, Sentry, EAS, extensões) | 0 | 1, 2 | ⬜ |
