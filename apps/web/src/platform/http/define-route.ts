@@ -165,7 +165,7 @@ function safeErrorFields(error: unknown): {
 function parseSchema<Schema extends z.ZodType>(schema: Schema, value: unknown): z.output<Schema> {
   const result = schema.safeParse(value);
   if (!result.success)
-    throw new HttpProblem(400, 'request.validation_failed', 'Request validation failed.');
+    throw new HttpProblem(400, 'validation.failed', 'Request validation failed.');
   return result.data;
 }
 

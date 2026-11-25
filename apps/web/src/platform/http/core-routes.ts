@@ -38,7 +38,7 @@ function routeProblem(error: unknown): never {
     throw new HttpProblem(401, 'auth.account_deleted', 'Authentication failed.');
   }
   if (error instanceof InvalidProfileUpdateError) {
-    throw new HttpProblem(400, 'request.validation_failed', 'Request validation failed.');
+    throw new HttpProblem(400, 'validation.failed', 'Request validation failed.');
   }
   if (error instanceof ConsentVersionOutdatedError) {
     throw new HttpProblem(

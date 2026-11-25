@@ -245,7 +245,7 @@ describe('W4 core endpoint definitions', () => {
 
     expect(response.status).toBe(400);
     expect(routes.state.profiles.size).toBe(0);
-    expect(await response.json()).toMatchObject({ code: 'request.validation_failed' });
+    expect(await response.json()).toMatchObject({ code: 'validation.failed' });
   });
 
   it('normalizes PATCH names and does not persist absent fields', async () => {
@@ -266,7 +266,23 @@ describe('W4 core endpoint definitions', () => {
     );
 
     expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe('validation.failed');
     expect(routes.state.profiles.get(TEST_USER_A)?.displayName).toBeNull();
+  });
+
+  it.each([
+    [
+      'unknown fields',
+      { document: 'terms', version: LEGAL_VERSIONS.termsVersion, userId: TEST_USER_B },
+    ],
+    ['malformed version', { document: 'terms', version: 'not-a-date' }],
+  ] as const)('rejects consent payloads with %s as validation.failed', async (_case, body) => {
+    const routes = protectedRoutes(createFakeCoreState());
+    const response = await routes.acceptConsent(request('me/consents', 'POST', 'tokenA', body));
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe('validation.failed');
+    expect(routes.state.acceptedWrites).toHaveLength(0);
   });
 
   it('returns exactly an empty 204 on first and repeated consent acceptance', async () => {

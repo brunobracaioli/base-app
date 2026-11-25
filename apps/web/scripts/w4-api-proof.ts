@@ -650,7 +650,7 @@ async function runProof(input: ProofInput): Promise<SafeProofResult> {
     assertCheck(
       checks,
       'profile.patch_unknown_field_400',
-      unknownPatch.status === 400 && unknownPatch.code === 'request.validation_failed',
+      unknownPatch.status === 400 && unknownPatch.code === 'validation.failed',
       { status: unknownPatch.status, ...(unknownPatch.code ? { code: unknownPatch.code } : {}) },
     );
 
@@ -762,7 +762,7 @@ async function runProof(input: ProofInput): Promise<SafeProofResult> {
       checks,
       'consent_other_user_id_body_400_without_write',
       otherIdBody.status === 400 &&
-        otherIdBody.code === 'request.validation_failed' &&
+        otherIdBody.code === 'validation.failed' &&
         injectedConsentCount === 0,
       {
         status: otherIdBody.status,
