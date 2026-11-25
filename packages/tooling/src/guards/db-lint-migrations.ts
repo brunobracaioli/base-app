@@ -293,6 +293,8 @@ function getFunctionSignature(payload: JsonObject): string {
   const parameters = nodeArray(payload.parameters);
   const types: string[] = [];
   for (const parameter of parameters) {
+    const mode = stringValue(getNodeValue(parameter, 'mode'));
+    if (mode === 'FUNC_PARAM_OUT' || mode === 'FUNC_PARAM_TABLE') continue;
     const parameterType = getNodeValue(parameter, 'argType');
     const name = stringsFromName(getNodeValue(parameterType, 'names'));
     types.push(name.join('.'));

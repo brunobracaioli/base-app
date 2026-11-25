@@ -26,6 +26,15 @@
       "owner": "postgres",
       "executeCallers": ["ops"],
       "purpose": "Delete at most 500 non-anonymous e-mail accounts that remain unconfirmed after three days."
+    },
+    {
+      "schema": "identity",
+      "name": "read_fresh_roles",
+      "signature": "(uuid)",
+      "migration": "20261125210517_w4_identity_profile_consents_fresh_roles.sql",
+      "owner": "postgres",
+      "executeCallers": ["authenticated"],
+      "purpose": "Return only the caller's current raw_app_meta_data roles for authorization freshness."
     }
   ]
 }

@@ -123,13 +123,14 @@ select set_eq(
       and relation.relkind in ('r','p')
   $$,
   $$
-    values ('identity.signup_reservations'::text),
+    values ('identity.profiles'::text), ('identity.signup_reservations'::text),
+           ('privacy.consents'::text),
            ('app_config.operator_alert_exempt_keys'::text),
            ('app_config.settings'::text),
            ('audit.events'::text), ('ops.alerts'::text),
            ('platform.idempotency_keys'::text)
   $$,
-  'Wave 2 creates exactly its six baseline tables'
+  'the W2 baseline plus W4 create exactly eight core application tables'
 );
 
 select ok(
@@ -141,7 +142,7 @@ select ok(
       and namespace.nspname in ('identity','privacy','app_config','platform','audit','ops')
       and (not relation.relrowsecurity or not relation.relforcerowsecurity)
   ),
-  'every W2 application table has RLS enabled and forced'
+  'every core application table has RLS enabled and forced'
 );
 
 select set_eq(
@@ -329,7 +330,11 @@ select set_eq(
   $$,
   $$
     values ('identity_system'::text, 'audit.events'::text, 'INSERT'::text),
+           ('identity_system'::text, 'identity.profiles'::text, 'SELECT'::text),
+           ('identity_system'::text, 'identity.profiles'::text, 'DELETE'::text),
            ('privacy_system'::text, 'audit.events'::text, 'INSERT'::text),
+           ('privacy_system'::text, 'privacy.consents'::text, 'SELECT'::text),
+           ('privacy_system'::text, 'privacy.consents'::text, 'DELETE'::text),
            ('app_config_system'::text, 'app_config.settings'::text, 'SELECT'::text),
            ('app_config_system'::text, 'app_config.operator_alert_exempt_keys'::text, 'SELECT'::text),
            ('app_config_system'::text, 'audit.events'::text, 'INSERT'::text),
@@ -348,18 +353,20 @@ select set_eq(
     from pg_catalog.pg_class relation
     join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
     join pg_catalog.pg_roles owner on owner.oid = relation.relowner
-    where namespace.nspname in ('identity','app_config','platform','audit','ops')
+    where namespace.nspname in ('identity','privacy','app_config','platform','audit','ops')
       and relation.relkind in ('r','p')
   $$,
   $$
-    values ('identity.signup_reservations'::text, 'postgres'::text),
+    values ('identity.profiles'::text, 'postgres'::text),
+           ('identity.signup_reservations'::text, 'postgres'::text),
+           ('privacy.consents'::text, 'postgres'::text),
            ('app_config.settings'::text, 'postgres'::text),
            ('app_config.operator_alert_exempt_keys'::text, 'postgres'::text),
            ('platform.idempotency_keys'::text, 'postgres'::text),
            ('audit.events'::text, 'postgres'::text),
            ('ops.alerts'::text, 'postgres'::text)
   $$,
-  'all six application tables remain owned by the migration role'
+  'all eight core application tables remain owned by postgres'
 );
 
 select set_eq(
@@ -372,7 +379,7 @@ select set_eq(
       coalesce(relation.relacl, pg_catalog.acldefault('r', relation.relowner))
     ) privilege
     join pg_catalog.pg_roles role on role.oid = privilege.grantee
-    where namespace.nspname in ('identity','app_config','platform','audit','ops')
+    where namespace.nspname in ('identity','privacy','app_config','platform','audit','ops')
       and relation.relkind in ('r','p')
       and role.rolname in ('ops','app_config_admin')
   $$,
@@ -493,9 +500,10 @@ select set_eq(
     values
       ('identity.before_user_created(jsonb):postgres:supabase_auth_admin:20261125175958_w2_supabase_compatibility_baseline.sql'::text),
       ('identity.count_unconfirmed_users():postgres:ops:20261125175958_w2_supabase_compatibility_baseline.sql'::text),
-      ('identity.delete_unconfirmed_users():postgres:ops:20261125175958_w2_supabase_compatibility_baseline.sql'::text)
+      ('identity.delete_unconfirmed_users():postgres:ops:20261125175958_w2_supabase_compatibility_baseline.sql'::text),
+      ('identity.read_fresh_roles(uuid):postgres:authenticated:20261125210517_w4_identity_profile_consents_fresh_roles.sql'::text)
   $$,
-  'the core Auth registry is closed to the three approved W2 functions and callers'
+  'the core Auth registry is closed to exactly four approved functions and callers'
 );
 
 select set_eq(
@@ -506,6 +514,7 @@ select set_eq(
     join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
     where namespace.nspname = 'identity'
       and procedure.proowner = 'postgres'::regrole
+      and procedure.prosecdef
   $$,
   $$
     select registry.schema_name || '.' || registry.function_name || registry.signature
@@ -521,13 +530,15 @@ select set_eq(
     join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
     where namespace.nspname = 'identity'
       and procedure.proowner = 'postgres'::regrole
+      and procedure.prosecdef
   $$,
   $$
     values ('before_user_created:jsonb'::text),
            ('count_unconfirmed_users:bigint'::text),
-           ('delete_unconfirmed_users:integer'::text)
+           ('delete_unconfirmed_users:integer'::text),
+           ('read_fresh_roles:TABLE(roles jsonb)'::text)
   $$,
-  'the three Auth helpers keep their exact return types'
+  'the four Auth helpers keep their exact return types'
 );
 
 select ok(
@@ -561,13 +572,15 @@ select set_eq(
     left join pg_catalog.pg_roles role on role.oid = privilege.grantee
     where namespace.nspname = 'identity'
       and procedure.proowner = 'postgres'::regrole
+      and procedure.prosecdef
       and privilege.grantee <> procedure.proowner
   $$,
   $$
     values
       ('identity.before_user_created(jsonb)'::text, 'supabase_auth_admin'::text, 'EXECUTE'::text, false),
       ('identity.count_unconfirmed_users()'::text, 'ops'::text, 'EXECUTE'::text, false),
-      ('identity.delete_unconfirmed_users()'::text, 'ops'::text, 'EXECUTE'::text, false)
+      ('identity.delete_unconfirmed_users()'::text, 'ops'::text, 'EXECUTE'::text, false),
+      ('identity.read_fresh_roles(uuid)'::text, 'authenticated'::text, 'EXECUTE'::text, false)
   $$,
   'Auth helper execution ACLs contain only the registered callers'
 );
@@ -588,7 +601,13 @@ select ok(
   and not has_function_privilege('api_runtime',
     'identity.count_unconfirmed_users()', 'EXECUTE')
   and not has_function_privilege('api_runtime',
-    'identity.delete_unconfirmed_users()', 'EXECUTE'),
+    'identity.delete_unconfirmed_users()', 'EXECUTE')
+  and has_function_privilege('authenticated', 'identity.read_fresh_roles(uuid)', 'EXECUTE')
+  and not has_function_privilege('anon', 'identity.read_fresh_roles(uuid)', 'EXECUTE')
+  and not has_function_privilege('api_runtime', 'identity.read_fresh_roles(uuid)', 'EXECUTE')
+  and not has_function_privilege('service_role', 'identity.read_fresh_roles(uuid)', 'EXECUTE')
+  and not has_function_privilege('ops', 'identity.read_fresh_roles(uuid)', 'EXECUTE')
+  and not has_function_privilege('supabase_auth_admin', 'identity.read_fresh_roles(uuid)', 'EXECUTE'),
   'each Auth helper is executable only by its designated non-owner caller'
 );
 

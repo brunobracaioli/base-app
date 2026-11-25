@@ -16,6 +16,7 @@ import {
 
 const migrationName = '20261124120000_ext-x_guard.sql';
 const coreAuthMigrationName = '20261125120000_core_auth_helpers.sql';
+const w4CoreAuthMigrationName = '20261125210517_w4_identity_profile_consents_fresh_roles.sql';
 
 const coreAuthFunctions = [
   {
@@ -45,6 +46,15 @@ const coreAuthFunctions = [
     executeCallers: ['ops'],
     purpose: 'Deletes only the fixed-age bounded batch of unconfirmed accounts.',
   },
+  {
+    schema: 'identity',
+    name: 'read_fresh_roles',
+    signature: '(uuid)',
+    migration: w4CoreAuthMigrationName,
+    owner: 'postgres',
+    executeCallers: ['authenticated'],
+    purpose: "Returns only the caller's current raw role metadata.",
+  },
 ] as const;
 
 const coreAuthMigration = `
@@ -58,6 +68,18 @@ const coreAuthMigration = `
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN 0; END; $$;
   ALTER FUNCTION identity.delete_unconfirmed_users() OWNER TO postgres;
 `;
+
+const w4CoreAuthMigration = `
+  CREATE FUNCTION identity.read_fresh_roles(p_user_id uuid)
+  RETURNS TABLE (roles jsonb)
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN; END; $$;
+  ALTER FUNCTION identity.read_fresh_roles(uuid) OWNER TO postgres;
+`;
+
+const coreAuthMigrations = [
+  { name: coreAuthMigrationName, contents: coreAuthMigration },
+  { name: w4CoreAuthMigrationName, contents: w4CoreAuthMigration },
+];
 
 function lint(contents: string, options: Parameters<typeof lintExtensionMigration>[1] = {}) {
   return lintExtensionMigration({ name: migrationName, contents }, options);
@@ -410,12 +432,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
 
   it('binds each core Auth definer to its same migration, owner, SECURITY DEFINER, and empty path', async () => {
     const registrations = parseCoreAuthFunctionRegistry({ functions: coreAuthFunctions });
-    expect(
-      await lintCoreAuthFunctionMigrations(
-        [{ name: coreAuthMigrationName, contents: coreAuthMigration }],
-        registrations,
-      ),
-    ).toEqual([]);
+    expect(await lintCoreAuthFunctionMigrations(coreAuthMigrations, registrations)).toEqual([]);
 
     const unregisteredTransfer = `
       CREATE FUNCTION identity.unregistered() RETURNS integer
@@ -426,7 +443,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(
       (
         await lintCoreAuthFunctionMigrations(
-          [{ name: coreAuthMigrationName, contents: unregisteredTransfer }],
+          [{ name: coreAuthMigrationName, contents: unregisteredTransfer }, coreAuthMigrations[1]!],
           registrations,
         )
       ).some((issue) => issue.code === 'unregistered-postgres-function-owner'),
@@ -439,7 +456,10 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(
       (
         await lintCoreAuthFunctionMigrations(
-          [{ name: coreAuthMigrationName, contents: migrationOwnedFunctions }],
+          [
+            { name: coreAuthMigrationName, contents: migrationOwnedFunctions },
+            coreAuthMigrations[1]!,
+          ],
           registrations,
         )
       ).some((issue) => issue.code === 'core-auth-function-owner'),
@@ -452,7 +472,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(
       (
         await lintCoreAuthFunctionMigrations(
-          [{ name: coreAuthMigrationName, contents: wrongOwner }],
+          [{ name: coreAuthMigrationName, contents: wrongOwner }, coreAuthMigrations[1]!],
           registrations,
         )
       ).some((issue) => issue.code === 'core-auth-function-owner'),
@@ -461,7 +481,10 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(
       (
         await lintCoreAuthFunctionMigrations(
-          [{ name: '20261125120001_other.sql', contents: coreAuthMigration }],
+          [
+            { name: '20261125120001_other.sql', contents: coreAuthMigration },
+            coreAuthMigrations[1]!,
+          ],
           registrations,
         )
       ).some((issue) => issue.code === 'core-auth-function-migration'),
@@ -474,7 +497,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(
       (
         await lintCoreAuthFunctionMigrations(
-          [{ name: coreAuthMigrationName, contents: unsafePath }],
+          [{ name: coreAuthMigrationName, contents: unsafePath }, coreAuthMigrations[1]!],
           registrations,
         )
       ).some((issue) => issue.code === 'function-search-path'),
@@ -490,7 +513,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(
       (
         await lintCoreAuthFunctionMigrations(
-          [{ name: coreAuthMigrationName, contents: wrongSignature }],
+          [{ name: coreAuthMigrationName, contents: wrongSignature }, coreAuthMigrations[1]!],
           registrations,
         )
       ).some((issue) => issue.code === 'unregistered-postgres-function-owner'),
@@ -505,6 +528,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
           name: coreAuthMigrationName,
           contents: 'CREATE ROLE auth_fn_owner NOLOGIN;',
         },
+        coreAuthMigrations[1]!,
       ],
       registrations,
     );
@@ -519,6 +543,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
             LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $$ SELECT 1 $$;
           `,
         },
+        coreAuthMigrations[1]!,
       ],
       registrations,
     );
@@ -540,6 +565,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
       'utf8',
     );
     writeFileSync(join(migrationDirectory, coreAuthMigrationName), coreAuthMigration, 'utf8');
+    writeFileSync(join(migrationDirectory, w4CoreAuthMigrationName), w4CoreAuthMigration, 'utf8');
     writeFileSync(
       join(migrationDirectory, '20261125120001_ext-x_owner.sql'),
       `
@@ -553,7 +579,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     try {
       const result = await lintExtensionMigrations(root);
       expect(result.checked).toBe(1);
-      expect(result.coreChecked).toBe(1);
+      expect(result.coreChecked).toBe(2);
       expect(
         result.issues.some(
           (entry) =>

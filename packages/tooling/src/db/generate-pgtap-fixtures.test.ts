@@ -6,6 +6,7 @@ import { generatePgtapRegistrySql, loadPgtapRegistryRows } from './generate-pgta
 
 const temporaryRoots: string[] = [];
 const migration = '20261125120000_core_auth_helpers.sql';
+const w4Migration = '20261125210517_w4_identity_profile_consents_fresh_roles.sql';
 
 const coreAuthFunctions = [
   {
@@ -34,6 +35,15 @@ const coreAuthFunctions = [
     owner: 'postgres',
     executeCallers: ['ops'],
     purpose: 'Deletes only a bounded batch.',
+  },
+  {
+    schema: 'identity',
+    name: 'read_fresh_roles',
+    signature: '(uuid)',
+    migration: w4Migration,
+    owner: 'postgres',
+    executeCallers: ['authenticated'],
+    purpose: "Returns only the calling user's current role metadata.",
   },
 ];
 
@@ -180,6 +190,18 @@ describe('generatePgtapRegistrySql', () => {
     expect(() => loadPgtapRegistryRows(callerRoot)).toThrow(
       /callers do not match the fixed policy/,
     );
+
+    const expandedFreshRoleCallersRoot = createRegistry({
+      ...commonFiles(),
+      'core-auth-fn-registry.json': {
+        functions: coreAuthFunctions.map((fn) =>
+          fn.name === 'read_fresh_roles' ? { ...fn, executeCallers: ['authenticated', 'ops'] } : fn,
+        ),
+      },
+    });
+    expect(() => loadPgtapRegistryRows(expandedFreshRoleCallersRoot)).toThrow(
+      /callers do not match the fixed policy/,
+    );
   });
 
   it('rejects an incomplete or extension-migration core Auth registry', () => {
@@ -187,7 +209,7 @@ describe('generatePgtapRegistrySql', () => {
       ...commonFiles(),
       'core-auth-fn-registry.json': { functions: coreAuthFunctions.slice(0, 2) },
     });
-    expect(() => loadPgtapRegistryRows(incompleteRoot)).toThrow(/complete fixed W2 function set/);
+    expect(() => loadPgtapRegistryRows(incompleteRoot)).toThrow(/complete fixed core function set/);
 
     const extensionMigrationRoot = createRegistry({
       ...commonFiles(),

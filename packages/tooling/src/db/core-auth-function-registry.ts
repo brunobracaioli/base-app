@@ -4,6 +4,7 @@ const coreAuthFunctionPolicies = new Map([
   ['identity.before_user_created(jsonb)', { executeCallers: ['supabase_auth_admin'] as const }],
   ['identity.count_unconfirmed_users()', { executeCallers: ['ops'] as const }],
   ['identity.delete_unconfirmed_users()', { executeCallers: ['ops'] as const }],
+  ['identity.read_fresh_roles(uuid)', { executeCallers: ['authenticated'] as const }],
 ]);
 
 const coreAuthFunctionEntrySchema = z
@@ -36,7 +37,7 @@ function identityOf(
 }
 
 /**
- * Validate the closed W2 core Auth-definer registry without importing the SQL parser.
+ * Validate the closed core Auth-definer registry without importing the SQL parser.
  * The function identities and exact executor sets are deliberately not data-extensible.
  */
 export function parseCoreAuthFunctionRegistryDocument(
@@ -62,6 +63,8 @@ export function parseCoreAuthFunctionRegistryDocument(
     registrations.push({ ...entry, signature: entry.signature.replaceAll(' ', '') });
   }
   if (seen.size !== coreAuthFunctionPolicies.size)
-    throw new Error('Core Auth-function registry must contain the complete fixed W2 function set.');
+    throw new Error(
+      'Core Auth-function registry must contain the complete fixed core function set.',
+    );
   return registrations.sort((left, right) => identityOf(left).localeCompare(identityOf(right)));
 }

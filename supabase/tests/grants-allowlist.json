@@ -5,6 +5,16 @@
       "schema": "audit",
       "table": "events",
       "privileges": ["INSERT"]
+    },
+    {
+      "schema": "identity",
+      "table": "profiles",
+      "privileges": ["SELECT", "INSERT"]
+    },
+    {
+      "schema": "privacy",
+      "table": "consents",
+      "privileges": ["SELECT", "INSERT"]
     }
   ]
 }
