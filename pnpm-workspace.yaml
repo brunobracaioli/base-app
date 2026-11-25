@@ -4,6 +4,10 @@ packages:
 
 allowBuilds:
   esbuild: true
+  '@parcel/watcher': false
+  '@sentry/cli': false
+  dtrace-provider: false
+  protobufjs: false
 
 strictDepBuilds: true
 minimumReleaseAge: 1440

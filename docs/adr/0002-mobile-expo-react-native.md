@@ -34,7 +34,12 @@ permissão de ATT (App Tracking Transparency) e não registra token de push.
 - **Fora do base-app:** login com Google e Apple, notificações push, ATT e SDKs de analytics ou
   atribuição. Versões derivadas os acrescentam pela `mobileExtensions` (ADR 0013), inclusive os
   plugins nativos em `app.config.ts`.
-- Versão do SDK do Expo: a estável mais recente na onda 0, fixada no lockfile.
+- Versões móveis são fixadas no lockfile e devem seguir a tabela de compatibilidade oficial do
+  SDK do Expo. Na implementação da onda 3 (2026-11-24), a versão estável mais recente é o Expo
+  SDK 58 (`expo` 58.0.26), que corresponde ao React Native 0.88 e ao React 19.3; o Expo Router
+  recomendado para essa linha é 58.0.32. Os patches exatos usados ficam em `apps/mobile/package.json`
+  e `pnpm-lock.yaml`; upgrades seguem o guia da versão do SDK, não o `latest` isolado de cada
+  pacote nativo.
 
 ## Alternativas consideradas
 
@@ -51,5 +56,12 @@ permissão de ATT (App Tracking Transparency) e não registra token de push.
 - O Expo Go não serve, porque há módulos nativos; o desenvolvimento usa o dev client.
 - Os builds dependem do EAS (pago acima da cota gratuita). Build local continua possível com
   `eas build --local` ou `expo prebuild`.
+- A configuração base não contém ID de projeto EAS nem certificado de OTA. Updates permanecem
+  desligados até o operador fornecer `EAS_PROJECT_ID`, certificado público, `keyid` e, se
+  necessário, uma URL HTTPS; com o conjunto completo, o app configura `ON_LOAD`, runtime por
+  fingerprint e validação de assinatura. A chave privada nunca entra no app nem no repositório.
+- O template de desenvolvimento não publica source maps no Sentry automaticamente. A integração
+  de runtime continua disponível; upload só pode ser habilitado num fluxo de release próprio,
+  com projeto configurado e credencial de upload externa.
 - Sem login por terceiros, "Sign in with Apple" não é exigido; sem rastreamento, o manifesto de
   privacidade e o formulário Data Safety ficam curtos (how-to de publicação).

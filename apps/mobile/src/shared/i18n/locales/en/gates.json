@@ -1,0 +1,10 @@
+{
+  "updateTitle": "Update required",
+  "updateMessage": "Install an updated version to continue.",
+  "maintenanceTitle": "Maintenance",
+  "maintenanceMessage": "Please try again later.",
+  "termsTitle": "Terms and privacy",
+  "termsMessage": "Legal documents have not been configured yet.",
+  "extensionErrorTitle": "An extension could not be verified.",
+  "extensionErrorMessage": "Please try again later."
+}

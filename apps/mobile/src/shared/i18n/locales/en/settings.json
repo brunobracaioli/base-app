@@ -1,0 +1,18 @@
+{
+  "title": "Settings",
+  "account": "Account",
+  "subscription": "Subscription",
+  "preferences": "Preferences",
+  "language": "Language",
+  "theme": "Theme",
+  "themeSystem": "System",
+  "themeLight": "Light",
+  "themeDark": "Dark",
+  "languagePtBr": "Portuguese (Brazil)",
+  "languageEn": "English",
+  "languageEs": "Spanish",
+  "legal": "Legal documents",
+  "privacy": "Privacy",
+  "extensions": "Extensions",
+  "notConfigured": "Available after product setup."
+}

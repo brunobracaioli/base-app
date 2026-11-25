@@ -1,0 +1,9 @@
+{
+  "home": "Home",
+  "settings": "Settings",
+  "loading": "Loading",
+  "retry": "Try again",
+  "offline": "Offline",
+  "offlineHint": "This action needs an internet connection.",
+  "genericError": "This action could not be completed."
+}

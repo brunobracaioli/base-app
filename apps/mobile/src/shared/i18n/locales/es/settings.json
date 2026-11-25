@@ -1,0 +1,18 @@
+{
+  "title": "Configuración",
+  "account": "Cuenta",
+  "subscription": "Suscripción",
+  "preferences": "Preferencias",
+  "language": "Idioma",
+  "theme": "Tema",
+  "themeSystem": "Sistema",
+  "themeLight": "Claro",
+  "themeDark": "Oscuro",
+  "languagePtBr": "Portugués (Brasil)",
+  "languageEn": "Inglés",
+  "languageEs": "Español",
+  "legal": "Documentos legales",
+  "privacy": "Privacidad",
+  "extensions": "Extensiones",
+  "notConfigured": "Disponible después de configurar el producto."
+}
