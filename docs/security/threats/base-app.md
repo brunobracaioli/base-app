@@ -350,7 +350,7 @@ com as listas de extensão vazias; os riscos abaixo aparecem quando alguém as p
 | R15 | Contas de painel (RevenueCat, Resend, Expo, lojas, Vercel, Supabase, Upstash) são cadeia de confiança | 2FA obrigatório e papéis mínimos no how-to de operação |
 | R16 | DSN pública do Sentry permite ruído | Filtros de entrada e teto de gasto |
 | R17 | Recursos de plano pago (senhas vazadas, teto de sessão, notificações de segurança) podem faltar | Ligados por ambiente quando o plano permitir; documentar o que muda |
-| R19 | Papéis e provedores em `app_metadata` valem até o token expirar (até 15 min) depois de revogados | Rotas `destructive` reconferem o papel no banco com `loadFreshRoles()` (G36 resolvida) |
+| R19 | Papéis e provedores em `app_metadata` podem permanecer no token até expirar (15 min mais a tolerância de 30 s) depois de alterados | Rotas `destructive` releem somente os papéis via `identity.read_fresh_roles`/`loadFreshRoles`; providers não são reconferidos por esse leitor. S-TM-3 provou propagação de metadata após refresh. G36 e ADR 0016 |
 | R18 | Feature real que use LLM no lugar de `doTheWork()` | Exige threat model próprio (OWASP LLM e Agentic Top 10) |
 | R20 | O widget de CAPTCHA de uma versão derivada executa na origem da página `/account-deletion`, que guarda uma sessão completa em memória (G29) | Mitigações obrigatórias e testadas: sessão só em memória, página sem outra função, CSP restrita a `script-src`, `frame-src` e `connect-src` com `https://<host>` (até 2 origens), widget desmontado antes do `verifyOtp`. A alternativa mais forte (etapa do e-mail em origem separada) fica como recomendação. Dono: mantenedor da versão derivada. Gatilho: adotar qualquer CAPTCHA, ou incidente no provedor do widget |
 | R21 | O Resend guarda o corpo dos e-mails (inclui o OTP) e não há alerta automático de bounce e reclamação: o Resend avisa o dono da conta por e-mail e o runbook manda revisar o painel (diário nas 4 primeiras semanas, depois semanal) (G5, G15) | Código de uso único e 600 s de vida; 2FA e papéis mínimos; retenção de conteúdo mínima do plano; limiares de ação (bounce ≥ 2%, reclamação ≥ 0,05%). Dono: operador do app. Gatilho: primeiro aviso de reputação, ou o Resend oferecer alerta ou webhook sem custo de rota nova |
@@ -686,3 +686,20 @@ diferiu da proposta.
 | C9 | Resolvida (R20) | PR-N4: o núcleo não carrega script de terceiros; uma versão derivada pode acrescentar só o widget de CAPTCHA, com CSP ampliada por `edge.ts` só sob `/account-deletion` |
 | C10 | Resolvida | `edge.ts`, `site.tsx` e `config.toml` gerado estão em base-app §3.4.3, ADR 0013 e ADR 0014 |
 | C11 | Resolvida | `GET`, `DELETE` e `purgeAccount` estão em privacy §3.1 e §5; o `DELETE` agora exige login recente |
+
+## Validação da superfície W4 — 2026-11-25
+
+- JWT/JWKS usa issuer fixo de configuração, ES256/RS256 e audiência authenticated;
+  `jku`/`x5u` do token não selecionam URLs. Cache de 10 min implica janela de
+  confiança na chave removida até expirar o cache; cooldown de 60 s não autoriza
+  assinatura desconhecida. Rede indisponível não vira token válido.
+- Leitura do marcador Redis falha fechada com `auth.unavailable`; os limites
+  das três rotas W4 também falham fechados. O dono aprovou essa política.
+- O helper de roles usa caller `authenticated`, UUID não nulo igual a auth.uid(),
+  e retorna só papéis do próprio usuário. A assinatura entra no registry fechado
+  e recebe testes negativos de caller/UUID. GUC não se torna autenticação.
+- Locale é só uma sugestão allowlisted, mantida privadamente; nenhum metadata
+  bruto entra em AuthContext/dbClaims/logs. `Me.createdAt` é data do perfil.
+- Perfil e consentimentos exigem RLS forçado e provas HTTP/pgTAP A/B; requests
+  não aceitam user_id. O aceite é naturalmente idempotente, preserva accepted_at
+  e rejeita versão desatualizada. Testes cobrem normalização e campos extras.

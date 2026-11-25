@@ -267,7 +267,9 @@ const { payload } = await jwtVerify(token, jwks, {
    `app_metadata` só é gravável pela chave secreta do Supabase, por isso pode ser lido; ainda
    assim é validado.
 4. Confere o marcador de conta excluída (`auth:deleted:v1:<user_id>` no Redis, definido pela
-   exclusão de conta). Presente → 401 `auth.account_deleted`.
+   exclusão de conta). Presente → 401 `auth.account_deleted`. Se a consulta do
+   marcador falhar ou expirar, responder `503 auth.unavailable` com `Retry-After`;
+   não tratar indisponibilidade como ausência do marcador (decisão W4 aprovada).
 5. Monta o contexto:
 
 ```ts
@@ -311,7 +313,10 @@ Resultados de falha:
 | `alg` fora da allowlist (`none`, `HS256`), assinatura inválida, `iss`/`aud` errados, `role` ≠ `authenticated` | 401 `auth.invalid_token` e log de segurança |
 | `exp` vencido | 401 `auth.token_expired` |
 | JWKS fora do ar e sem chave em cache | 503 `auth.unavailable` com `Retry-After`; nunca aceita sem verificar |
-| `kid` desconhecido | uma nova busca do JWKS (respeitando o intervalo mínimo); se continuar desconhecido, 401 |
+| `kid` desconhecido | uma nova busca do JWKS (respeitando o intervalo mínimo); se continuar desconhecido, 401 `auth.invalid_token` |
+
+`iat` futuro além dos 30 s de tolerância é inválido. A mesma tolerância de
+30 s vale para `exp`; testes de expiração devem ultrapassá-la.
 
 A verificação é local: sem chamada ao Supabase por requisição. O custo é que um token de
 sessão revogada continua valendo até expirar (R-ID-1).
@@ -591,6 +596,10 @@ export const UpdateProfileBody = z.object({
 }
 ```
 
+- `Me.createdAt` é `identity.profiles.created_at`: criação do perfil sob demanda,
+  não a data de criação da conta Auth (decisão W4 aprovada).
+- GET/PATCH `/v1/me` usam `onStoreFailure: 'closed'` e `ipLimit: 120` por minuto,
+  além dos limites por usuário da tabela. Falha do rate limiter responde 503.
 - `displayName` é normalizado (NFC, sem caracteres de controle) antes de gravar; `null` limpa
   o campo. Quem renderiza escapa, porque o valor é texto livre do usuário.
 - `GET /v1/me` é a primeira chamada autenticada depois do login; o app a usa para decidir o

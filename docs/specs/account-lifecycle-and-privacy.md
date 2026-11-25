@@ -307,6 +307,12 @@ e-mail de uma origem separada da que guarda a sessão.
 - A tela leva aos textos completos; recusar não dá acesso ao Início: o usuário pode sair ou
   excluir a conta.
 
+**Política W4 aprovada:** `POST /v1/me/consents` mantém 20/h por usuário,
+`ipLimit: 120` por minuto e `onStoreFailure: 'closed'`. Indisponibilidade do
+limite responde 503; a gravação naturalmente idempotente não exige
+`Idempotency-Key`. A consulta ao marcador de conta excluída também falha
+fechada na autenticação, conforme identity-and-auth §3.5.
+
 ### 3.6 Exportação
 
 `GET /v1/me/export` monta o JSON a partir de consultas públicas de cada contexto e das seções

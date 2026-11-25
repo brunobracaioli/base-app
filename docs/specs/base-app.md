@@ -903,6 +903,18 @@ usuário.
 - Tipos TypeScript das tabelas gerados por `kysely-codegen` contra o banco local; o CI falha se
   o arquivo gerado divergir do commitado.
 
+**Leitura de papéis frescos — W4 (aprovada).**
+`identity.read_fresh_roles(p_user_id uuid)` é uma função pequena do núcleo,
+pertencente a `postgres`, `SECURITY DEFINER`, com SQL fixo e `search_path = ''`.
+Ela exige UUID não nulo igual a `auth.uid()` e só devolve
+`auth.users.raw_app_meta_data -> 'roles'` do próprio usuário. `EXECUTE` apenas
+para `authenticated`; nenhuma permissão direta em Auth ou chave administrativa
+entra no runtime. A assinatura e o chamador entram no registro fechado do
+ADR 0016 e no pgTAP. Ausência ou conteúdo inválido vira lista vazia; falha de
+leitura nega autorização pelo tratamento já previsto de política. O adapter
+opera em `userScopedDb` com as claims mínimas do AuthContext verificado. GUC
+continua sendo vínculo transacional, não uma nova prova de autenticação.
+
 ### 3.9 Configuração do produto
 
 `packages/config/src/product.config.ts` é o único lugar que um app novo edita para se

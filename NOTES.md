@@ -2,30 +2,21 @@
 
 ## Status atual
 
-- **Fase:** ondas 0, 1, 2 e 3 concluídas localmente como fundação do template.
-  As ondas 1/2/3 foram implementadas em paralelo com Luna/xhigh e integradas na
-  branch `chore/template-foundation-integration`, worktree `/tmp/app-base-template`.
-- **Próximo passo:** revisar/integrar esta branch na `main`; depois, onda 4 —
-  Auth na API, perfil e consentimentos. Nenhuma onda 4+ foi iniciada. Login completo, assinatura, exclusão, exportação e bootstrap
-  continuam nas ondas próprias; a v1 inteira do template ainda não está pronta.
-- **Base:** `main` permanece em `cda886d`, merge da onda 0 pelo PR #2. Não houve
-  novo push, PR, merge na `main`, deploy, publicação nem alteração de banco hospedado.
-- **Verificação:** [matriz por critério](docs/plan/waves-1-3-verification.md).
-  `pnpm ci:local`: 18 gates aprovados, 328 testes e um teste condicionado à
-  conexão real. pgTAP: 11 arquivos/198 asserções aprovados. Build web e exports
-  Android/iOS passaram; contratos, configuração e tipos sem drift.
-- **Provas reais de banco:** migrations executadas como `postgres` sem
-  superusuário; cadastro/SMTP local, reserva preservada após falha de envio,
-  HTTP 429 com cota cheia e concorrência 300/301 e 20/21 validados. A prova TLS
-  anterior continua válida para o adaptador executável idêntico por SHA-256;
-  os tipos modificados foram regenerados e conferidos no banco real.
-- **Limpeza:** containers, volumes, rede, diretório descartável e túnel SSH da
-  verificação foram removidos, assim como as credenciais temporárias. Outros
-  workloads da KVM foram preservados.
+- **Fase:** onda 4 em execução, após integrar localmente as fundações 0–3 na
+  `main` (`4261bce`). Branch `feat/w4-auth-profile-consents`, worktree
+  `/tmp/app-base-w4`; nenhum push foi feito.
+- **Próximo passo:** aplicar as definições aprovadas do
+  [plano da onda 4](docs/plan/wave-4-execution.md), integrar a implementação depois do S-TM-3 aprovado
+  e validar Auth, perfil e consentimentos com os gates reais locais/KVM.
+- **Escopo:** uma onda nesta sessão. Login mobile, configuração remota da onda 5
+  e demais ondas não serão adiantados. Coders Luna/xhigh trabalham com ownership
+  separado; o gerente integra e verifica.
+- **Fundações:** ondas 0–3 concluídas, com [matriz de evidências](docs/plan/waves-1-3-verification.md).
+  O último gate de código aprovou 18 gates, 328 testes e um teste condicionado
+  à conexão real; pgTAP anterior passou em 198 asserções.
+- **Operação:** somente ambiente local/KVM existente; sem GitHub Actions,
+  projeto hospedado, deploy, publicação, novo PR ou credenciais no chat.
 - **Uso local:** [desenvolver a partir do template](docs/how-to/develop-from-template.md).
-  Gates usam ambiente local/KVM, sem GitHub Actions (ADR 0015).
-- **Versão derivada:** estende o núcleo pelos pontos de base-app §3.4; mudanças
-  no núcleo devem ser genéricas e manter o funcionamento com registros vazios.
 
 ## Roadmap
 
