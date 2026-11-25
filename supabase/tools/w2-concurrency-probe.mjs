@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { isAbsolute, resolve } from 'node:path';
-import { statSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const requiredEnvironment = [
   'W2_PROBE_DISPOSABLE_DATABASE',
@@ -9,12 +8,12 @@ const requiredEnvironment = [
   'W2_PROBE_DB_PORT',
   'W2_PROBE_DB_NAME',
   'W2_PROBE_DB_USER',
-  'W2_PROBE_PGPASSFILE',
   'W2_PROBE_SSLMODE',
+  'PGPASSWORD',
 ];
 
-function fail(code) {
-  process.stderr.write(`${JSON.stringify({ ok: false, error: code })}\n`);
+function fail(code, details = {}) {
+  process.stderr.write(`${JSON.stringify({ ok: false, error: code, ...details })}\n`);
   process.exit(1);
 }
 
@@ -33,33 +32,34 @@ const host = required('W2_PROBE_DB_HOST');
 const port = Number(required('W2_PROBE_DB_PORT'));
 const database = required('W2_PROBE_DB_NAME');
 const user = required('W2_PROBE_DB_USER');
-const passfile = required('W2_PROBE_PGPASSFILE');
 const sslmode = required('W2_PROBE_SSLMODE');
 const psql = process.env.W2_PROBE_PSQL_BIN || 'psql';
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) fail('invalid_db_port');
-if (user !== 'postgres') fail('db_user_must_be_postgres_for_scratch_probe');
-if (!isAbsolute(passfile)) fail('pgpassfile_must_be_absolute');
+if (user !== 'supabase_admin') fail('db_user_must_be_supabase_admin_for_scratch_probe');
 if (!['disable', 'require', 'verify-ca', 'verify-full'].includes(sslmode))
   fail('invalid_sslmode');
-
-try {
-  if ((statSync(passfile).mode & 0o077) !== 0) fail('pgpassfile_permissions_must_be_0600');
-} catch {
-  fail('pgpassfile_unreadable');
-}
 
 const psqlEnvironment = {
   PATH: process.env.PATH,
   PGHOST: host,
   PGPORT: String(port),
+  PGCONNECT_TIMEOUT: '10',
   PGDATABASE: database,
   PGUSER: user,
-  PGPASSFILE: passfile,
+  PGPASSWORD: required('PGPASSWORD'),
   PGSSLMODE: sslmode,
 };
 if (process.env.W2_PROBE_SSLROOTCERT)
   psqlEnvironment.PGSSLROOTCERT = resolve(process.env.W2_PROBE_SSLROOTCERT);
+
+function extractSqlStates(stderr) {
+  return [
+    ...new Set(
+      [...stderr.matchAll(/(?:SQLSTATE\s+|ERROR:\s+)([0-9A-Z]{5})/gi)].map((match) => match[1]),
+    ),
+  ];
+}
 
 function runPsql(sql) {
   return new Promise((resolvePromise) => {
@@ -70,10 +70,31 @@ function runPsql(sql) {
     );
     let stdout = '';
     let stderr = '';
+    let timedOut = false;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+      const forceKill = setTimeout(() => child.kill('SIGKILL'), 1000);
+      forceKill.unref();
+    }, 30_000);
+    timeout.unref();
+    const finish = (exitCode) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolvePromise({
+        exitCode,
+        stdout,
+        sqlStates: extractSqlStates(stderr),
+        quotaMessage: /too many app_config changes/.test(stderr),
+        timedOut,
+      });
+    };
     child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
     child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk));
-    child.once('error', () => resolvePromise({ exitCode: 127, stdout, stderr }));
-    child.once('close', (exitCode) => resolvePromise({ exitCode: exitCode ?? 1, stdout, stderr }));
+    child.once('error', () => finish(127));
+    child.once('close', (exitCode) => finish(exitCode ?? 1));
     child.stdin.end(sql);
   });
 }
@@ -91,7 +112,8 @@ function parseRows(stdout) {
 
 function parseJsonRows(stdout, expectedCount, stage) {
   const rows = parseRows(stdout);
-  if (rows.length !== expectedCount) fail(`${stage}_unexpected_row_count`);
+  if (rows.length !== expectedCount)
+    fail(`${stage}_unexpected_row_count`, { expectedCount, observedCount: rows.length });
   try {
     return rows.map((row) => JSON.parse(row));
   } catch {
@@ -106,10 +128,11 @@ select current_user || '|' ||
         where action = 'app_config.updated'
           and occurred_at > clock_timestamp() - interval '1 hour')::text;
 `);
-if (preflight.exitCode !== 0) fail('preflight_query_failed');
+if (preflight.exitCode !== 0)
+  fail('preflight_query_failed', { exitCode: preflight.exitCode, sqlStates: preflight.sqlStates });
 const [preflightUser, reservationCountText, appConfigEventCountText] =
   parseRows(preflight.stdout)[0]?.split('|') || [];
-if (preflightUser !== 'postgres') fail('preflight_unexpected_database_role');
+if (preflightUser !== 'supabase_admin') fail('preflight_unexpected_database_role');
 if (reservationCountText !== '0' || appConfigEventCountText !== '0')
   fail('preflight_requires_fresh_signup_quota_and_app_config_quota');
 
@@ -126,14 +149,18 @@ const signupResults = await Promise.all(
     .map(async (batch) => ({
       batch,
       result: await runPsql(
-        `${batch
+        `SET ROLE supabase_auth_admin;\n${batch
           .map(() => `select identity.before_user_created(${anonymousEvent});`)
-          .join('\n')}\n`,
+          .join('\n')}\nRESET ROLE;\n`,
       ),
     })),
 );
 if (signupResults.some(({ result }) => result.exitCode !== 0))
-  fail('signup_concurrency_sql_failed');
+  fail('signup_concurrency_sql_failed', {
+    failures: signupResults
+      .filter(({ result }) => result.exitCode !== 0)
+      .map(({ result }) => ({ exitCode: result.exitCode, sqlStates: result.sqlStates, timedOut: result.timedOut })),
+  });
 
 const signupRows = signupResults.flatMap(({ batch, result }) =>
   parseJsonRows(result.stdout, batch.length, 'signup'),
@@ -143,11 +170,19 @@ const acceptedSignups = signupRows.filter(
 ).length;
 const rejectedSignups = signupRows.filter((value) => value?.error?.http_code === 429).length;
 if (signupRows.length !== signupAttempts || acceptedSignups !== 300 || rejectedSignups !== 1)
-  fail('signup_quota_not_exactly_300_of_301');
+  fail('signup_quota_not_exactly_300_of_301', {
+    attempts: signupAttempts,
+    accepted: acceptedSignups,
+    rejected429: rejectedSignups,
+  });
 
 const signupReadback = await runPsql('select count(*)::text from identity.signup_reservations;\n');
 if (signupReadback.exitCode !== 0 || parseRows(signupReadback.stdout)[0] !== '300')
-  fail('signup_reservation_readback_mismatch');
+  fail('signup_reservation_readback_mismatch', {
+    exitCode: signupReadback.exitCode,
+    observedCount: parseRows(signupReadback.stdout)[0] ?? null,
+    sqlStates: signupReadback.sqlStates,
+  });
 
 const runId = randomBytes(6).toString('hex');
 const seed = await runPsql(`
@@ -158,12 +193,17 @@ select 'system', ${sqlLiteral(`script:pgtap:w2-probe-${runId}`)},
        ${sqlLiteral(`w2-probe-${runId}-seed-`)} || generated.n::text, '{}'::jsonb
 from generate_series(1, 19) as generated(n);
 `);
-if (seed.exitCode !== 0) fail('app_config_quota_seed_failed');
+if (seed.exitCode !== 0)
+  fail('app_config_quota_seed_failed', { exitCode: seed.exitCode, sqlStates: seed.sqlStates });
 
 const settingsReadback = await runPsql(
   "select key || '|' || updated_at::text from app_config.settings where key in ('maintenance', 'legal') order by key;\n",
 );
-if (settingsReadback.exitCode !== 0) fail('app_config_settings_readback_failed');
+if (settingsReadback.exitCode !== 0)
+  fail('app_config_settings_readback_failed', {
+    exitCode: settingsReadback.exitCode,
+    sqlStates: settingsReadback.sqlStates,
+  });
 const settingTimestamps = new Map(
   parseRows(settingsReadback.stdout).map((line) => {
     const separator = line.indexOf('|');
@@ -172,7 +212,8 @@ const settingTimestamps = new Map(
 );
 const maintenanceTimestamp = settingTimestamps.get('maintenance');
 const legalTimestamp = settingTimestamps.get('legal');
-if (!maintenanceTimestamp || !legalTimestamp) fail('app_config_settings_missing');
+if (!maintenanceTimestamp || !legalTimestamp)
+  fail('app_config_settings_missing', { maintenancePresent: Boolean(maintenanceTimestamp), legalPresent: Boolean(legalTimestamp) });
 
 const actorRef = `script:app-config:${runId}`;
 const updates = [
@@ -189,18 +230,24 @@ const updates = [
 ];
 const updateResults = await Promise.all(
   updates.map(({ key, value, timestamp }) =>
-    runPsql(`\\set VERBOSITY verbose\nSET ROLE app_config_admin;\nSELECT app_config.set_setting(
+    runPsql(`\\set VERBOSITY verbose\nSET ROLE app_config_writer;\nSELECT app_config.set_setting(
   ${sqlLiteral(key)}, ${sqlLiteral(value)}::jsonb, 'system', ${sqlLiteral(actorRef)},
   ${sqlLiteral(`w2-probe-${runId}-${key}`)}, ${sqlLiteral(timestamp)}::timestamptz
-);\n`),
+);\nRESET ROLE;\n`),
   ),
 );
 const successfulUpdates = updateResults.filter((result) => result.exitCode === 0).length;
 const quotaRejections = updateResults.filter(
-  (result) => result.exitCode !== 0 && /\b54000\b|too many app_config changes/.test(result.stderr),
+  (result) => result.exitCode !== 0 && (result.sqlStates.includes('54000') || result.quotaMessage),
 ).length;
 if (successfulUpdates !== 1 || quotaRejections !== 1)
-  fail('app_config_concurrency_did_not_serialize_20th_and_21st');
+  fail('app_config_concurrency_did_not_serialize_20th_and_21st', {
+    accepted: successfulUpdates,
+    rejected54000: quotaRejections,
+    failures: updateResults
+      .filter((result) => result.exitCode !== 0)
+      .map((result) => ({ exitCode: result.exitCode, sqlStates: result.sqlStates, timedOut: result.timedOut })),
+  });
 
 const appConfigReadback = await runPsql(`
 select count(*)::text
@@ -209,7 +256,11 @@ where action = 'app_config.updated'
   and correlation_id like ${sqlLiteral(`w2-probe-${runId}-%`)};
 `);
 if (appConfigReadback.exitCode !== 0 || parseRows(appConfigReadback.stdout)[0] !== '20')
-  fail('app_config_quota_audit_readback_mismatch');
+  fail('app_config_quota_audit_readback_mismatch', {
+    exitCode: appConfigReadback.exitCode,
+    observedCount: parseRows(appConfigReadback.stdout)[0] ?? null,
+    sqlStates: appConfigReadback.sqlStates,
+  });
 
 process.stdout.write(
   `${JSON.stringify({
