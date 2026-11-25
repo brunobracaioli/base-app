@@ -14,6 +14,14 @@ import { getLocales } from 'expo-localization';
 
 import product from '@base-app/config/product.config';
 import { mobileExtensions } from '../../../extensions';
+import {
+  installExtensionApi,
+  unavailableExtensionApiClient,
+  type ExtensionApiDependencies,
+} from '../../../composition/extension-api';
+import { unavailableAuthOperations, unavailableSessionPort } from '../../auth/model/auth-ports';
+import type { AuthOperationsPort, SessionPort } from '../../auth/model/auth-ports';
+import type { ApiClient } from '../../../shared/api-client/api-client';
 import type { MobileExtension, SessionSummary } from '../../../extensions/types';
 import {
   composeMobileExtensions,
@@ -87,6 +95,9 @@ export type AppProvidersProps = React.PropsWithChildren<{
   readonly extensions?: readonly MobileExtension[];
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly sessionSummary?: SessionSummary | null;
+  readonly authOperations?: AuthOperationsPort;
+  readonly sessionPort?: SessionPort;
+  readonly apiClient?: ApiClient;
   readonly initialLocale?: 'pt-BR' | 'en' | 'es';
   readonly bootState?: BootShellState;
 }>;
@@ -96,6 +107,9 @@ export function AppProviders({
   extensions = mobileExtensions,
   environment,
   sessionSummary = null,
+  authOperations = unavailableAuthOperations,
+  sessionPort = unavailableSessionPort,
+  apiClient = unavailableExtensionApiClient,
   initialLocale,
   bootState = defaultBootShellState,
 }: AppProvidersProps) {
@@ -104,6 +118,16 @@ export function AppProviders({
     () => composeMobileExtensions(extensions, resolvedEnvironment),
     [extensions, resolvedEnvironment],
   );
+  const extensionApiDependencies = useMemo<ExtensionApiDependencies>(
+    () => ({
+      auth: authOperations,
+      session: sessionPort,
+      apiClient,
+      captchaProvider: registry.captchaProvider,
+    }),
+    [authOperations, sessionPort, apiClient, registry.captchaProvider],
+  );
+  useEffect(() => installExtensionApi(extensionApiDependencies), [extensionApiDependencies]);
   const locale =
     initialLocale ??
     resolveLocale(

@@ -118,6 +118,28 @@ describe('dependency-cruiser architecture rules', () => {
         'apps/mobile/src/features/auth/api/session.ts',
         "import { createClient } from '@supabase/supabase-js';\nvoid createClient;\n",
       );
+      writeFixture(
+        root,
+        'apps/mobile/src/composition/extension-api.ts',
+        'export const installExtensionApi = (): void => {};\n',
+      );
+      writeFixture(
+        root,
+        'apps/mobile/src/features/auth/model/auth-ports.ts',
+        'export type SessionPort = {};\n',
+      );
+      writeFixture(root, 'apps/mobile/src/extensions/api.ts', 'export const extensionAuth = {};\n');
+      writeFixture(
+        root,
+        'apps/mobile/src/extensions/api.test.tsx',
+        "import { installExtensionApi } from '../composition/extension-api';\nvoid installExtensionApi;\n",
+      );
+      const extensionEntry = 'apps/mobile/src/app/(ext)/sample.tsx';
+      writeFixture(
+        root,
+        extensionEntry,
+        `import { extensionAuth } from '${importPath(extensionEntry, 'apps/mobile/src/extensions/api.ts')}';\nvoid extensionAuth;\n`,
+      );
       installSupabaseStub(root);
 
       const result = cruise(root);
@@ -233,6 +255,20 @@ describe('dependency-cruiser architecture rules', () => {
       source: (entry: string, target: string) =>
         `import { client } from '${importPath(entry, target)}';\nvoid client;\n`,
       targetContent: 'export const client = {};\n',
+    },
+    {
+      rule: 'mobile-extensions-use-public-facade',
+      entry: 'apps/mobile/src/app/(ext)/feature.tsx',
+      target: 'apps/mobile/src/composition/extension-api.ts',
+      source: (entry: string, target: string) =>
+        `import { installExtensionApi } from '${importPath(entry, target)}';\nvoid installExtensionApi;\n`,
+    },
+    {
+      rule: 'mobile-extensions-use-public-facade',
+      entry: 'apps/mobile/src/extensions/auth-consumer.ts',
+      target: 'apps/mobile/src/features/auth/model/auth-ports.ts',
+      source: (entry: string, target: string) =>
+        `import type { SessionPort } from '${importPath(entry, target)}';\nvoid ({} as SessionPort);\n`,
     },
     {
       rule: 'system-db-only-from-context-infrastructure',

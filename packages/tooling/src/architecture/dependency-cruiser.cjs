@@ -95,6 +95,14 @@ const forbidden = [
     to: { path: '^apps/web/' },
   },
   {
+    name: 'mobile-extensions-use-public-facade',
+    severity: 'error',
+    from: {
+      path: '^apps/mobile/src/(?:extensions/(?!api\\.ts$|registry\\.ts$|types\\.ts$|[^/]+\\.test\\.[jt]sx?$)|app/\\(ext\\)/(?!.*\\.test\\.[jt]sx?$))',
+    },
+    to: { path: '^apps/mobile/src/(?:composition/|features/auth/|shared/api-client/)' },
+  },
+  {
     name: 'supabase-client-only-in-auth',
     severity: 'error',
     from: { path: '^apps/mobile/src/(?!features/auth/)' },

@@ -8,8 +8,21 @@ export type IdentityTokenInput = {
 
 export type EmailChangeOtpInput = {
   readonly email: string;
-  readonly code: string;
+  readonly token: string;
 };
+
+export type LinkIdentityInput = {
+  readonly provider: string;
+};
+
+export type UnlinkIdentityInput = {
+  readonly identityId: string;
+};
+
+export interface CapturedPreviousSessionPort {
+  getAccessToken(): Promise<string | null>;
+  signOutLocal(): Promise<void>;
+}
 
 export interface AuthOperationsPort {
   signInAnonymously(captchaToken: string | undefined): Promise<Result<void, AuthErrorKey>>;
@@ -18,10 +31,10 @@ export interface AuthOperationsPort {
     captchaToken: string | undefined,
   ): Promise<Result<void, AuthErrorKey>>;
   linkIdentity(
-    input: IdentityTokenInput,
+    input: LinkIdentityInput,
     captchaToken: string | undefined,
   ): Promise<Result<void, AuthErrorKey>>;
-  unlinkIdentity(input: { readonly provider: string }): Promise<Result<void, AuthErrorKey>>;
+  unlinkIdentity(input: UnlinkIdentityInput): Promise<Result<void, AuthErrorKey>>;
   updateEmail(email: string): Promise<Result<void, AuthErrorKey>>;
   verifyEmailChangeOtp(input: EmailChangeOtpInput): Promise<Result<void, AuthErrorKey>>;
   refreshSession(): Promise<Result<void, AuthErrorKey>>;
@@ -33,6 +46,7 @@ export interface SessionPort {
   getSessionSummary(): SessionSummary | null;
   subscribe(listener: () => void): () => void;
   signOutLocal(): Promise<void>;
+  capturePreviousSession(): Promise<CapturedPreviousSessionPort | null>;
 }
 
 export const unavailableSessionPort: SessionPort = {
@@ -40,6 +54,7 @@ export const unavailableSessionPort: SessionPort = {
   getSessionSummary: () => null,
   subscribe: () => () => undefined,
   signOutLocal: async () => undefined,
+  capturePreviousSession: async () => null,
 };
 
 export const unavailableAuthOperations: AuthOperationsPort = {

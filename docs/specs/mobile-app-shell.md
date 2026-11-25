@@ -288,15 +288,36 @@ cru do Supabase nem o `api-client` do núcleo (regra do dependency-cruiser
 `supabase-client-only-in-auth`: o cliente cru só é usado em `features/auth`). A fachada exporta:
 
 - `extensionAuth`: `signInAnonymously()`, `signInWithIdToken({ provider, token, nonce? })`,
-  `linkIdentity(...)`, `unlinkIdentity(...)` (exige login recente), `updateEmail(email)`,
-  `verifyEmailChangeOtp(...)`, `refreshSession()`, `signOutEverywhere()` (encerra todas as
+  `linkIdentity({ provider })`, `unlinkIdentity({ identityId })` (exige login recente),
+  `updateEmail(email)`, `verifyEmailChangeOtp({ email, token })`, `refreshSession()`,
+  `signOutEverywhere()` (encerra todas as
   sessões da conta, `signOut({ scope: 'global' })`; exige login recente) e `withPreviousSession(fn)`. Toda chamada que
   aceita CAPTCHA passa por `withCaptcha`.
-- `withPreviousSession(fn)`: guarda a sessão atual (ex.: a de visitante) antes de uma troca de
-  conta e entrega a `fn` **só** o access token anterior, para o corpo de uma rota de fusão; depois
-  descarta a sessão anterior com `signOut({ scope: 'local' })` do cliente secundário. É o único
-  ponto em que código de extensão recebe um access token: o token nunca é logado, persistido ou
-  devolvido, e o teste confere isso (storage, logs, breadcrumbs e retorno).
+- `withPreviousSession<T>(fn: (previousAccessToken: string) => Promise<T>): Promise<T>`:
+  captura a sessão atual (ex.: a de visitante) antes de uma troca de conta e entrega à `fn`
+  **só** o access token anterior, para o corpo de uma rota de fusão. A captura usa um cliente
+  secundário privado com armazenamento isolado; não usa a sessão primária para obter nem descartar
+  a sessão anterior. Se não houver sessão/token anterior, rejeita com um erro estável sem chamar a
+  `fn`; se um cliente secundário foi capturado, o cleanup dele ainda ocorre. Se a criação do cliente
+  secundário falhar antes de devolver o handle, o adaptador limpa qualquer estado parcial e rejeita
+  com erro estável. A captura nunca tenta ler a sessão primária como alternativa.
+- O resultado de `fn` pode ser `undefined`, `null`, boolean, string, número finito, array ou record
+  simples composto recursivamente desses valores. A fachada copia e congela arrays e records antes
+  de devolvê-los, para que mutações posteriores do objeto original não introduzam o token no
+  resultado. Recusa funções, símbolos, `bigint`, números não finitos, accessors, ciclos, instâncias
+  de classes e objetos opacos. A validação inspeciona descritores de propriedades e não executa
+  getters. Strings em valores e chaves são recusadas quando contêm o token anterior; nomes como
+  `token` e `accessToken`, por si só, não são proibidos.
+- Após capturar uma sessão, o cleanup do cliente secundário ocorre em `finally`, inclusive se a
+  leitura do token, a callback ou a validação do resultado falhar. O cleanup só descarta a sessão
+  capturada, preservando uma nova sessão primária instalada pela callback. Falhas da captura, da
+  leitura, da callback, da validação e do cleanup viram o mesmo erro `Extension callback failed.`;
+  mensagens e causas de terceiros nunca são devolvidas ou logadas.
+- A inspeção estrutural de objetos pode acionar traps de `Proxy`; exceções são sanitizadas, mas a
+  fachada não é sandbox e não impede efeitos colaterais arbitrários de código JavaScript da
+  extensão ou de traps de proxy. Extensões continuam sendo código confiável no mesmo processo.
+  `withPreviousSession` é o único ponto em que código de extensão recebe um access token; o token
+  nunca é persistido nem devolvido no resultado.
 - `useSessionSummary()`: `{ userId, isAnonymous } | null`, atualizado quando a sessão muda.
 - `extensionApiClient`: o cliente HTTP autenticado do núcleo (mesmos headers de versão, plataforma
   e `clientRequestId`, mesmo tratamento de `problem+json` e mesmo refresh), para as rotas
@@ -307,7 +328,9 @@ cru do Supabase nem o `api-client` do núcleo (regra do dependency-cruiser
 
 `withCaptcha(provider, action, call)` é do núcleo, em
 `features/auth/api/with-captcha.ts`; o adaptador do Supabase Auth passa por ele toda chamada que
-aceita `captchaToken` (identity-and-auth.md, ID-14). Sem provedor, `call(undefined)`.
+aceita `captchaToken` (identity-and-auth.md, ID-14). Sem provedor, `call(undefined)`. Se a obtenção
+do desafio falhar, a chamada de Auth não roda; se Auth falhar ou devolver `Result` de erro, o token
+não consumido é liberado pelo provedor.
 
 Regras da composição (`src/composition/`):
 
@@ -320,6 +343,10 @@ Regras da composição (`src/composition/`):
   e no teste;
 - no máximo **um** `captchaProvider` em todas as extensões (duas fazem o boot falhar em
   desenvolvimento e o teste de composição);
+- `CaptchaProvider.dispose()` roda uma única vez quando termina o último registro de runtime que
+  usa aquela instância. Cleanup de um provider ainda compartilhado não o descarta; cleanups
+  simultâneos não chamam `dispose()` duas vezes; o replay de efeitos do React StrictMode não
+  descarta uma instância reinstalada no mesmo ciclo de composição;
 - provedores das extensões envolvem a árvore **abaixo** dos do núcleo, na ordem do array;
 - `bootGates` rodam depois dos do núcleo; um gate que lança erro é tratado como `block` para uma
   tela de erro, nunca como `pass`;
@@ -363,9 +390,14 @@ Nenhuma extensão importa internals de `features/` do núcleo (dependency-cruise
   remover uma chave do `es`).
 - `useValidatedParams`.
 - Fachada: cada função de `extensionAuth` que aceita CAPTCHA passa por `withCaptcha`;
-  `withPreviousSession` entrega o token anterior só a `fn`, descarta a sessão anterior com
-  `signOut({ scope: 'local' })` mesmo se `fn` lançar e não deixa o token em storage nem em log;
-  `useSessionSummary` atualiza na troca de sessão; `extensionApiClient` envia os headers do núcleo.
+  `withPreviousSession` cobre os tipos de retorno permitidos e recusa todos os tipos opacos,
+  accessors, ciclos e ocorrências do token em chaves ou strings; aceita `undefined` e nomes de
+  campo token-like sem conteúdo sensível; retorna cópia profunda congelada; getters não executam;
+  erros da captura, leitura do token, callback, validação e cleanup são sanitizados; falha de captura
+  não usa a sessão primária nem chama a callback sem token; cleanup roda se a leitura do token ou
+  callback falhar e não encerra uma nova sessão primária; `useSessionSummary` atualiza na troca de
+  sessão sem renderizar o resumo do usuário anterior após trocar a porta; `extensionApiClient` envia
+  os headers do núcleo.
 - Composição de extensões: nomes duplicados, dois `captchaProvider`, ordem dos providers e dos
   gates; `publicEnv` com prefixo errado, com `SECRET`, `KEY_PRIVATE` ou `TOKEN`, e com chave
   repetida falha; site key de CAPTCHA passa.
