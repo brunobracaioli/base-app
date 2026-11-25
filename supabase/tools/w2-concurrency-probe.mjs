@@ -71,8 +71,10 @@ function runPsql(sql) {
         '--tuples-only',
         '--set=ON_ERROR_STOP=1',
         '--set=VERBOSITY=verbose',
+        '--command',
+        sql,
       ],
-      { env: psqlEnvironment, stdio: ['pipe', 'pipe', 'pipe'] },
+      { env: psqlEnvironment, stdio: ['ignore', 'pipe', 'pipe'] },
     );
     let stdout = '';
     let stderr = '';
@@ -101,7 +103,6 @@ function runPsql(sql) {
     child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk));
     child.once('error', () => finish(127));
     child.once('close', (exitCode) => finish(exitCode ?? 1));
-    child.stdin.end(sql);
   });
 }
 
@@ -260,7 +261,7 @@ const updates = [
 ];
 const updateResults = await Promise.all(
   updates.map(({ key, value, timestamp }) =>
-    runPsql(`\\set VERBOSITY verbose\nBEGIN;\nSET LOCAL ROLE app_config_writer;\nSELECT app_config.set_setting(
+    runPsql(`BEGIN;\nSET LOCAL ROLE app_config_writer;\nSELECT app_config.set_setting(
   ${sqlLiteral(key)}, ${sqlLiteral(value)}::jsonb, 'system', ${sqlLiteral(actorRef)},
   ${sqlLiteral(`w2-probe-${runId}-${key}`)}, ${sqlLiteral(timestamp)}::timestamptz
 );\nCOMMIT;\n`),

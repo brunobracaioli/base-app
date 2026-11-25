@@ -35,6 +35,11 @@ with SQLSTATE `54000`. This exercises the fresh-snapshot quota read after the tr
 advisory lock. Each psql child has a 30-second timeout, and failure output only reports SQLSTATEs,
 counts, timeout flags, and exit codes.
 
+Each batch is passed with one `psql --command` simple-query request, so network latency cannot
+separate the hook call from its explicit commit while it holds the advisory lock. Quiet,
+tuples-only output contains only JSON rows from the hook SELECTs; BEGIN/COMMIT command tags do
+not enter the JSON result parser.
+
 The probe leaves only opaque signup reservations and synthetic count-only audit rows in the
 scratch database. Reset that disposable database after recording the JSON result. It does not
 exercise GoTrue's actual `supabase_auth_admin` hook call; the separate real Auth/SMTP harness is
