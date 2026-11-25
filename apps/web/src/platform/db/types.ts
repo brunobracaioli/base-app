@@ -47,6 +47,14 @@ export interface AuditEvents {
   subject_ref: string | null;
 }
 
+export interface IdentityProfiles {
+  created_at: Generated<string>;
+  display_name: string | null;
+  locale: string;
+  updated_at: Generated<string>;
+  user_id: string;
+}
+
 export interface IdentitySignupReservations {
   reservation_id: Generated<string>;
   reserved_at: Generated<string>;
@@ -71,11 +79,20 @@ export interface PlatformIdempotencyKeys {
   user_id: string;
 }
 
+export interface PrivacyConsents {
+  accepted_at: Generated<string>;
+  document: string;
+  user_id: string;
+  version: string;
+}
+
 export interface DB {
   "app_config.operator_alert_exempt_keys": AppConfigOperatorAlertExemptKeys;
   "app_config.settings": AppConfigSettings;
   "audit.events": AuditEvents;
+  "identity.profiles": IdentityProfiles;
   "identity.signup_reservations": IdentitySignupReservations;
   "ops.alerts": OpsAlerts;
   "platform.idempotency_keys": PlatformIdempotencyKeys;
+  "privacy.consents": PrivacyConsents;
 }
