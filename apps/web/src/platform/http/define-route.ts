@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import * as z from 'zod';
 import { metric } from '@vercel/functions';
 
+import type { AuthFailure, AuthVerificationResult } from '../auth/types';
 import type {
   AuthorizationDecision,
   AuthorizationPolicy,
@@ -76,6 +77,19 @@ function validateRouteDefinition<Schemas extends RouteInputSchemas, Output>(
   if (definition.idempotency === 'required' && definition.auth.kind !== 'user') {
     throw new TypeError('Idempotency requires a user-authenticated route.');
   }
+  if (
+    definition.successStatus !== undefined &&
+    definition.successStatus !== 200 &&
+    definition.successStatus !== 204
+  ) {
+    throw new TypeError('Route successStatus must be 200 or 204.');
+  }
+  if (definition.successStatus === 204) {
+    const noContentOutput = definition.output.safeParse(undefined);
+    if (!noContentOutput.success || noContentOutput.data !== undefined) {
+      throw new TypeError('A 204 route output schema must validate to undefined.');
+    }
+  }
   if (definition.destructive && definition.auth.kind !== 'user') {
     throw new TypeError('Destructive routes require user authentication.');
   }
@@ -99,12 +113,25 @@ function createResponse(
   headers?: HeadersInit,
 ): Response {
   const responseHeaders = new Headers(headers);
-  responseHeaders.set('Content-Type', 'application/json; charset=utf-8');
+  if (status !== 204) responseHeaders.set('Content-Type', 'application/json; charset=utf-8');
   responseHeaders.set('X-Request-Id', requestId);
   responseHeaders.set('Cache-Control', 'no-store');
-  return applySecurityHeaders(
-    new Response(JSON.stringify(body) ?? 'null', { status, headers: responseHeaders }),
-  );
+  const responseBody = status === 204 ? null : (JSON.stringify(body) ?? 'null');
+  return applySecurityHeaders(new Response(responseBody, { status, headers: responseHeaders }));
+}
+
+function authFailureProblem(error: AuthFailure): HttpProblem {
+  if (error.code === 'auth.unavailable') {
+    const retryAfter = error.retryAfterSec;
+    const retryAfterSec =
+      retryAfter !== undefined && Number.isSafeInteger(retryAfter) && retryAfter > 0
+        ? retryAfter
+        : 5;
+    return new HttpProblem(503, error.code, 'Authentication is temporarily unavailable.', {
+      'Retry-After': String(retryAfterSec),
+    });
+  }
+  return new HttpProblem(401, error.code, 'Authentication failed.');
 }
 
 function errorName(error: unknown): string {
@@ -363,7 +390,7 @@ async function enforceAuthorization(
 
   let freshRolesPromise: Promise<readonly string[]> | undefined;
   const loadFreshRoles = (): Promise<readonly string[]> => {
-    freshRolesPromise ??= dependencies.loadFreshRoles(auth.userId);
+    freshRolesPromise ??= dependencies.loadFreshRoles(auth);
     return freshRolesPromise;
   };
   if (input.destructive) {
@@ -482,9 +509,14 @@ async function claimIdempotency(
   }
 
   const body =
-    process.env.NODE_ENV === 'production'
-      ? result.response.body
-      : input.output.parse(result.response.body);
+    result.response.status === 204
+      ? input.output.parse(undefined)
+      : process.env.NODE_ENV === 'production'
+        ? result.response.body
+        : input.output.parse(result.response.body);
+  if (result.response.status === 204 && body !== undefined) {
+    throw new HttpProblem(500, 'internal.error', 'An unexpected error occurred.');
+  }
   return {
     kind: 'replay',
     response: createResponse(body, result.response.status, input.requestId),
@@ -523,6 +555,7 @@ export function createDefineRoute(dependencies: RouteDependencies) {
     definition: DefineRouteInput<Schemas, Output>,
   ): (request: Request) => Promise<Response> {
     validateRouteDefinition(definition, dependencies);
+    const successStatus = definition.successStatus ?? 200;
     const maxBodyBytes = definition.maxBodyBytes ?? DEFAULT_BODY_LIMIT;
     const maintenance = definition.maintenance ?? 'block';
     const isIdempotent = definition.idempotency === 'required';
@@ -579,15 +612,24 @@ export function createDefineRoute(dependencies: RouteDependencies) {
           if (!verified) throw new HttpProblem(401, 'auth.invalid', 'Authentication failed.');
           auth = { kind: 'webhook', provider: definition.auth.provider };
         } else if (definition.auth.kind === 'user') {
-          const token = authToken(request);
-          if (!token) throw new HttpProblem(401, 'auth.required', 'Authentication is required.');
-          try {
-            auth = await dependencies.authenticateUser(token, request);
-          } catch {
-            auth = null;
+          const authorizationHeader = request.headers.get('authorization');
+          if (authorizationHeader === null) {
+            throw new HttpProblem(401, 'auth.missing_token', 'Authentication is required.');
           }
-          if (auth?.kind !== 'user')
-            throw new HttpProblem(401, 'auth.invalid', 'Authentication failed.');
+          const token = authToken(request);
+          if (!token) throw new HttpProblem(401, 'auth.invalid_token', 'Authentication failed.');
+          let verification: AuthVerificationResult;
+          try {
+            verification = await dependencies.authenticateUser(token, request);
+          } catch (error) {
+            dependencies.logger.error('Authentication verifier failed', {
+              route: definition.operationId,
+              ...safeErrorFields(error),
+            });
+            throw authFailureProblem({ code: 'auth.unavailable' });
+          }
+          if (!verification.ok) throw authFailureProblem(verification.error);
+          auth = verification.value;
         }
 
         await enforceRateLimit(dependencies, {
@@ -681,13 +723,16 @@ export function createDefineRoute(dependencies: RouteDependencies) {
         };
         const handlerOutput = await definition.handler(context);
         const output =
-          process.env.NODE_ENV === 'production'
-            ? handlerOutput
-            : definition.output.parse(handlerOutput);
-        const responseBody = encodeBody(output);
+          successStatus === 204 || process.env.NODE_ENV !== 'production'
+            ? definition.output.parse(handlerOutput)
+            : handlerOutput;
+        if (successStatus === 204 && output !== undefined) {
+          throw new Error('A 204 route handler must return undefined.');
+        }
+        const responseBodyByteLength = successStatus === 204 ? 0 : encodeBody(output).byteLength;
 
         if (idempotencyLease) {
-          if (responseBody.byteLength > MAX_REPLAY_BODY_BYTES) {
+          if (responseBodyByteLength > MAX_REPLAY_BODY_BYTES) {
             await releaseIdempotency(dependencies, {
               ...idempotencyLease,
               operationId: definition.operationId,
@@ -697,7 +742,10 @@ export function createDefineRoute(dependencies: RouteDependencies) {
             try {
               await dependencies.idempotencyStore.complete({
                 ...idempotencyLease,
-                response: { status: 200, body: output },
+                response: {
+                  status: successStatus,
+                  body: successStatus === 204 ? null : output,
+                },
               });
               idempotencyLease = undefined;
             } catch (error) {
@@ -715,12 +763,7 @@ export function createDefineRoute(dependencies: RouteDependencies) {
         }
 
         outcome = 'success';
-        return createResponse(
-          JSON.parse(responseBody.text) as unknown,
-          200,
-          requestId,
-          responseHeaders,
-        );
+        return createResponse(output, successStatus, requestId, responseHeaders);
       } catch (error) {
         if (idempotencyLease) {
           await releaseIdempotency(dependencies, {

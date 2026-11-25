@@ -17,18 +17,11 @@ import {
   runRegisteredPortContracts,
   type PortContractSuite,
 } from './index';
+import { createTestUserAuthContext, TEST_USER_A } from '../route-dependencies';
 
-const USER_A = '11111111-1111-4111-8111-111111111111';
 const USER_B = '22222222-2222-4222-8222-222222222222';
 const request = {
-  auth: {
-    kind: 'user' as const,
-    userId: USER_A,
-    isAnonymous: false,
-    appRoles: [],
-    providers: ['email'],
-    amr: [],
-  },
+  auth: createTestUserAuthContext(TEST_USER_A),
   host: 'app.example',
   method: 'GET',
   path: '/v1/test',
@@ -51,7 +44,7 @@ describe('extension port contract suites', () => {
       },
     };
     await expect(
-      assertEntitlementsFailClosed(() => reader.read(USER_A, { fresh: true })),
+      assertEntitlementsFailClosed(() => reader.read(TEST_USER_A, { fresh: true })),
     ).rejects.toThrow(/returned access after a provider failure/);
     await expect(
       assertEntitlementsFailClosed(async () => {
@@ -110,7 +103,7 @@ describe('extension port contract suites', () => {
     };
     await expect(
       assertAccountDeletionPolicyContract(policy, {
-        userId: USER_A,
+        userId: TEST_USER_A,
         correlationId: '00000000-0000-7000-8000-000000000001',
       }),
     ).resolves.toBeUndefined();
@@ -126,12 +119,12 @@ describe('extension port contract suites', () => {
       run: () =>
         assertExportIsolation({
           schema,
-          userA: USER_A,
+          userA: TEST_USER_A,
           userB: USER_B,
           userAMarkers: ['only-user-a'],
           userBMarkers: ['only-user-b'],
           async collect(userId) {
-            return { value: userId === USER_A ? 'only-user-b' : 'only-user-b' };
+            return { value: userId === TEST_USER_A ? 'only-user-b' : 'only-user-b' };
           },
         }),
     };

@@ -73,14 +73,17 @@ function exportedHttpMethods(
         continue;
       }
       const call = declaration.initializer;
-      if (!call || !ts.isCallExpression(call) || !ts.isObjectLiteralExpression(call.arguments[0]))
-        continue;
-      const auth = call.arguments[0].properties.find(
-        (property) =>
-          ts.isPropertyAssignment(property) &&
-          ts.isIdentifier(property.name) &&
-          property.name.text === 'auth',
-      );
+      if (!call || !ts.isCallExpression(call)) continue;
+      const definition = call.arguments[0];
+      const auth =
+        definition && ts.isObjectLiteralExpression(definition)
+          ? definition.properties.find(
+              (property) =>
+                ts.isPropertyAssignment(property) &&
+                ts.isIdentifier(property.name) &&
+                property.name.text === 'auth',
+            )
+          : undefined;
       const isPublic =
         auth !== undefined &&
         ts.isPropertyAssignment(auth) &&
@@ -101,25 +104,30 @@ function exportedHttpMethods(
 
 describe('API route and OpenAPI contracts', () => {
   it('requires every API route handler to come from platform/http defineRoute', () => {
-    expect(checkApiRouteHandlers(projectRoot)).toEqual({ checked: 1, failures: [] });
+    const result = checkApiRouteHandlers(projectRoot);
+    expect(result.checked).toBeGreaterThan(0);
+    expect(result.failures).toEqual([]);
   });
 
-  it('keeps public route handlers identical to OpenAPI security: [] entries', () => {
+  it('keeps every API route method, path, and auth mode aligned with OpenAPI contracts', () => {
     const routes = findRouteFiles(apiRoot);
-    const actualPublic = routes.flatMap((routeFile) => {
-      return exportedHttpMethods(routeFile)
-        .filter((handler) => handler.isPublic)
-        .map(
-          (handler) =>
-            `${handler.method} /${relative(apiRoot, routeFile)
-              .replaceAll('\\', '/')
-              .replace(/\/route\.ts$/, '')}`,
-        );
+    const actual = routes.flatMap((routeFile) => {
+      return exportedHttpMethods(routeFile).map((handler) => ({
+        key: `${handler.method} /${relative(apiRoot, routeFile)
+          .replaceAll('\\', '/')
+          .replace(/\/route\.ts$/, '')}`,
+        isPublic: handler.isPublic,
+      }));
     });
     const contracts = [...coreEndpoints, ...extensionEndpoints];
-    const expectedPublic = contracts
-      .filter((endpoint) => endpoint.security.length === 0)
-      .map((endpoint) => `${endpoint.method} ${endpoint.path}`);
-    expect(actualPublic.toSorted()).toEqual(expectedPublic.toSorted());
+    const expected = contracts.map((endpoint) => `${endpoint.method} ${endpoint.path}`);
+    expect(actual.map(({ key }) => key).toSorted()).toEqual(expected.toSorted());
+    for (const route of actual) {
+      const contract = contracts.find(
+        (endpoint) => `${endpoint.method} ${endpoint.path}` === route.key,
+      );
+      expect(contract, route.key).toBeDefined();
+      expect(route.isPublic, route.key).toBe(contract?.security.length === 0);
+    }
   });
 });

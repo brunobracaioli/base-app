@@ -1,5 +1,6 @@
 import type * as z from 'zod';
 
+import type { AuthVerificationResult } from '../auth/types';
 import type { AuthorizationPolicy, AuthContext, UserAuthContext } from '../authorization/types';
 import type { AppLogger } from '../observability/logger';
 import type { RateLimiter } from './rate-limit';
@@ -97,7 +98,7 @@ export type RouteDependencies = {
   readonly logger: AppLogger;
   readonly rateLimiter: RateLimiter;
   readonly idempotencyStore: IdempotencyStore;
-  readonly authenticateUser: (token: string, request: Request) => Promise<UserAuthContext | null>;
+  readonly authenticateUser: (token: string, request: Request) => Promise<AuthVerificationResult>;
   readonly checkVersionAndMaintenance: (input: {
     readonly request: Request;
     readonly operationId: string;
@@ -107,7 +108,7 @@ export type RouteDependencies = {
     string,
     { readonly policy: AuthorizationPolicy; readonly operator: boolean }
   >;
-  readonly loadFreshRoles: (userId: string) => Promise<readonly string[]>;
+  readonly loadFreshRoles: (auth: UserAuthContext) => Promise<readonly string[]>;
   readonly recordSecurityEvent: (event: SecurityAuditEvent) => Promise<void>;
 };
 
@@ -122,19 +123,29 @@ export type RouteHandlerContext<Schemas extends RouteInputSchemas> = {
   readonly host: string;
 };
 
-export type DefineRouteInput<Schemas extends RouteInputSchemas, Output> = {
+type DefineRouteCommon<Schemas extends RouteInputSchemas> = {
   readonly operationId: string;
   readonly auth: RouteAuthConfig;
   readonly rateLimit: RateLimitConfig;
   readonly input?: Schemas;
-  readonly output: z.ZodType<Output>;
-  readonly handler: (context: RouteHandlerContext<Schemas>) => Promise<Output> | Output;
   readonly maxBodyBytes?: number;
   readonly maintenance?: 'block' | 'exempt';
   readonly authorize?: readonly string[];
   readonly destructive?: boolean;
   readonly idempotency?: 'none' | 'required';
 };
+
+export type DefineRouteInput<Schemas extends RouteInputSchemas, Output> =
+  | (DefineRouteCommon<Schemas> & {
+      readonly successStatus?: 200;
+      readonly output: z.ZodType<Output>;
+      readonly handler: (context: RouteHandlerContext<Schemas>) => Promise<Output> | Output;
+    })
+  | (DefineRouteCommon<Schemas> & {
+      readonly successStatus: 204;
+      readonly output: z.ZodType<undefined>;
+      readonly handler: (context: RouteHandlerContext<Schemas>) => Promise<undefined> | undefined;
+    });
 
 export type ApiRequestContext = {
   readonly request: Request;

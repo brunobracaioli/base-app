@@ -1,4 +1,5 @@
-import type { AuthorizationPolicy } from '../authorization/types';
+import type { AuthorizationPolicy, UserAuthContext } from '../authorization/types';
+import type { AuthVerificationResult } from '../auth/types';
 import type { AppLogger } from '../observability/logger';
 import type { IdempotencyAcquireResult, IdempotencyStore, RouteDependencies } from '../http/types';
 import type { RateLimiter, RateLimitResult } from '../http/rate-limit';
@@ -8,6 +9,30 @@ export const TEST_REQUEST_ID = '00000000-0000-7000-8000-000000000001';
 export const TEST_USER_A = '11111111-1111-4111-8111-111111111111';
 export const TEST_USER_B = '22222222-2222-4222-8222-222222222222';
 export const TEST_IDEMPOTENCY_KEY = '33333333-3333-4333-8333-333333333333';
+export const TEST_SESSION_ID = '55555555-5555-4555-8555-555555555555';
+
+export function createTestUserAuthContext(
+  userId = TEST_USER_A,
+  amr: UserAuthContext['amr'] = [{ method: 'email', timestamp: TEST_NOW.getTime() / 1_000 }],
+): UserAuthContext {
+  return {
+    kind: 'user',
+    userId,
+    sessionId: TEST_SESSION_ID,
+    aal: 'aal1',
+    email: null,
+    isAnonymous: false,
+    appRoles: [],
+    providers: ['email'],
+    amr,
+    dbClaims: {
+      sub: userId,
+      role: 'authenticated',
+      aal: 'aal1',
+      session_id: TEST_SESSION_ID,
+    },
+  };
+}
 
 export type CapturedLog = {
   readonly level: 'info' | 'warn' | 'error';
@@ -154,17 +179,10 @@ export function createTestRouteDependencies(
     logger,
     rateLimiter,
     idempotencyStore,
-    async authenticateUser(token) {
+    async authenticateUser(token): Promise<AuthVerificationResult> {
       order.push('auth');
       const userId = input.users?.[token] ?? TEST_USER_A;
-      return {
-        kind: 'user',
-        userId,
-        isAnonymous: false,
-        appRoles: [],
-        providers: ['email'],
-        amr: [{ timestamp: TEST_NOW.getTime() / 1_000 }],
-      };
+      return { ok: true, value: createTestUserAuthContext(userId) };
     },
     async checkVersionAndMaintenance() {
       order.push('gate');

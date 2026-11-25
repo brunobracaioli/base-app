@@ -6,6 +6,8 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(scriptDirectory, '..');
 const workspaceRoot = resolve(appRoot, '../..');
 const packageManager = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+const forwardedTestArgs = process.argv.slice(2);
+if (forwardedTestArgs[0] === '--') forwardedTestArgs.shift();
 
 let dependencyBuildFailed = false;
 for (const packageName of ['@base-app/config', '@base-app/contracts']) {
@@ -34,7 +36,10 @@ if (!dependencyBuildFailed) {
   }
 }
 if (!dependencyBuildFailed) {
-  const testRun = spawnSync(packageManager, ['exec', 'vitest', 'run'], {
+  const vitestArguments = ['exec', 'vitest', 'run'];
+  if (forwardedTestArgs.length === 0) vitestArguments.push('--coverage');
+  vitestArguments.push(...forwardedTestArgs);
+  const testRun = spawnSync(packageManager, vitestArguments, {
     cwd: appRoot,
     env: process.env,
     stdio: 'inherit',

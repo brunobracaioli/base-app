@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { createDefineRoute } from './define-route';
 import {
+  createTestUserAuthContext,
   createTestRouteDependencies,
   TEST_IDEMPOTENCY_KEY,
   TEST_NOW,
@@ -51,6 +52,15 @@ function userRequest(token = 'test-token', headers: HeadersInit = {}): Request {
       ...headers,
     },
     body: JSON.stringify({ value: 'accepted' }),
+  });
+}
+
+function authenticatedRequest(token = 'test-token'): Request {
+  return new Request('https://app.example/api/v1/test', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'x-real-ip': '198.51.100.12',
+    },
   });
 }
 
@@ -208,6 +218,115 @@ describe('defineRoute HTTP pipeline', () => {
     expect(body).toContain('ratelimit.exceeded');
   });
 
+  it.each([
+    ['auth.invalid_token', 401, undefined],
+    ['auth.token_expired', 401, undefined],
+    ['auth.account_deleted', 401, undefined],
+    ['auth.unavailable', 503, 13],
+  ] as const)(
+    'preserves authentication failure %s as HTTP %s',
+    async (code, status, retryAfter) => {
+      const test = createTestRouteDependencies({
+        overrides: {
+          async authenticateUser() {
+            return {
+              ok: false,
+              error: { code, ...(retryAfter === undefined ? {} : { retryAfterSec: retryAfter }) },
+            };
+          },
+        },
+      });
+      const route = createDefineRoute(test.dependencies)({
+        operationId: 'getAuthFailureTest',
+        auth: { kind: 'user' },
+        rateLimit: userRateLimit,
+        output: outputSchema,
+        handler: async () => ({ ok: true }),
+      });
+      const response = await route(userRequest('sensitive-test-token'));
+      expect(response.status).toBe(status);
+      expect((await response.json()).code).toBe(code);
+      expect(response.headers.get('retry-after')).toBe(status === 503 ? '13' : null);
+      expect(JSON.stringify(test.logs)).not.toContain('sensitive-test-token');
+    },
+  );
+
+  it('distinguishes a missing Authorization header from a malformed bearer value', async () => {
+    const test = createTestRouteDependencies();
+    const route = createDefineRoute(test.dependencies)({
+      operationId: 'getMissingAuthTest',
+      auth: { kind: 'user' },
+      rateLimit: userRateLimit,
+      output: outputSchema,
+      handler: async () => ({ ok: true }),
+    });
+
+    const missing = await route(new Request('https://app.example/'));
+    expect(missing.status).toBe(401);
+    expect((await missing.json()).code).toBe('auth.missing_token');
+
+    const malformed = await route(
+      new Request('https://app.example/', { headers: { Authorization: 'Basic hidden-value' } }),
+    );
+    expect(malformed.status).toBe(401);
+    expect((await malformed.json()).code).toBe('auth.invalid_token');
+    expect(JSON.stringify(test.logs)).not.toContain('hidden-value');
+  });
+
+  it('fails a thrown verifier closed as unavailable without exposing its message or token', async () => {
+    const test = createTestRouteDependencies({
+      overrides: {
+        async authenticateUser() {
+          throw new Error('private jwks response with sensitive-test-token');
+        },
+      },
+    });
+    const route = createDefineRoute(test.dependencies)({
+      operationId: 'getThrownAuthVerifierTest',
+      auth: { kind: 'user' },
+      rateLimit: userRateLimit,
+      output: outputSchema,
+      handler: async () => ({ ok: true }),
+    });
+
+    const response = await route(userRequest('sensitive-test-token'));
+    expect(response.status).toBe(503);
+    expect((await response.json()).code).toBe('auth.unavailable');
+    expect(response.headers.get('retry-after')).toBe('5');
+    expect(JSON.stringify(test.logs)).not.toContain('private jwks response');
+    expect(JSON.stringify(test.logs)).not.toContain('sensitive-test-token');
+  });
+
+  it('returns an empty secured 204 response and validates its undefined output in production mode', async () => {
+    const test = createTestRouteDependencies();
+    const route = createDefineRoute(test.dependencies)({
+      operationId: 'postNoContentTest',
+      auth: { kind: 'user' },
+      rateLimit: userRateLimit,
+      successStatus: 204,
+      output: z.undefined(),
+      handler: async () => undefined,
+    });
+    const previousNodeEnvironment = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const response = await (async () => {
+      try {
+        return await route(authenticatedRequest());
+      } finally {
+        if (previousNodeEnvironment === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = previousNodeEnvironment;
+      }
+    })();
+
+    expect(response.status).toBe(204);
+    await expect(response.text()).resolves.toBe('');
+    expect(response.headers.get('content-type')).toBeNull();
+    expect(response.headers.get('x-request-id')).toBe(TEST_REQUEST_ID);
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('strict-transport-security')).toBeTruthy();
+    expect(response.headers.get('content-security-policy')).toBeTruthy();
+  });
+
   it('fails open only when the route declares it and marks the response', async () => {
     const open = createTestRouteDependencies();
     open.rateLimiter.failure = new Error('generated-test-only-store-error');
@@ -294,11 +413,59 @@ describe('defineRoute HTTP pipeline', () => {
       output: outputSchema,
       handler: async () => ({ ok: true }),
     });
-    const response = await route(userRequest());
+    const response = await route(authenticatedRequest());
     expect(response.status).toBe(403);
     expect(await response.text()).not.toContain('generated-test-only-policy-error');
     expect(test.auditEvents).toHaveLength(1);
     expect(test.auditEvents[0]?.action).toBe('security.authorization_policy_error');
+  });
+
+  it('passes the complete verified user context to fresh-role loading', async () => {
+    let loadedContext: ReturnType<typeof createTestUserAuthContext> | undefined;
+    const test = createTestRouteDependencies({
+      policies: new Map([
+        [
+          'fresh-role-reader',
+          {
+            operator: false,
+            policy: async (request) => {
+              await request.loadFreshRoles();
+              return { allow: true };
+            },
+          },
+        ],
+      ]),
+      overrides: {
+        async loadFreshRoles(auth) {
+          loadedContext = auth;
+          return [];
+        },
+      },
+    });
+    const route = createDefineRoute(test.dependencies)({
+      operationId: 'getFreshRolesContextTest',
+      auth: { kind: 'user' },
+      rateLimit: userRateLimit,
+      authorize: ['fresh-role-reader'],
+      output: outputSchema,
+      handler: async () => ({ ok: true }),
+    });
+
+    const response = await route(authenticatedRequest());
+    expect(response.status).toBe(200);
+    expect(loadedContext).toMatchObject({
+      kind: 'user',
+      userId: TEST_USER_A,
+      sessionId: expect.any(String),
+      aal: 'aal1',
+      email: null,
+      dbClaims: {
+        sub: TEST_USER_A,
+        role: 'authenticated',
+        aal: 'aal1',
+        session_id: expect.any(String),
+      },
+    });
   });
 
   it('uses the trusted non-default recent-auth window, the newest AMR timestamp and canonical error code', async () => {
@@ -307,15 +474,11 @@ describe('defineRoute HTTP pipeline', () => {
         recentAuthMaxAgeSec: 60,
         async authenticateUser() {
           return {
-            kind: 'user',
-            userId: TEST_USER_A,
-            isAnonymous: false,
-            appRoles: [],
-            providers: ['email'],
-            amr: [
-              { timestamp: TEST_NOW.getTime() / 1_000 - 600 },
-              { timestamp: TEST_NOW.getTime() / 1_000 - 60 },
-            ],
+            ok: true,
+            value: createTestUserAuthContext(TEST_USER_A, [
+              { method: 'email', timestamp: TEST_NOW.getTime() / 1_000 - 600 },
+              { method: 'email', timestamp: TEST_NOW.getTime() / 1_000 - 60 },
+            ]),
           };
         },
       },
@@ -334,8 +497,8 @@ describe('defineRoute HTTP pipeline', () => {
     await expect(
       freshAtBoundary.dependencies.authenticateUser('test-token', request()),
     ).resolves.toMatchObject({
-      kind: 'user',
-      userId: TEST_USER_A,
+      ok: true,
+      value: { kind: 'user', userId: TEST_USER_A },
     });
     const freshResponse = await route(request());
     expect(freshResponse.status, JSON.stringify(await freshResponse.clone().json())).toBe(200);
@@ -345,12 +508,10 @@ describe('defineRoute HTTP pipeline', () => {
         recentAuthMaxAgeSec: 60,
         async authenticateUser() {
           return {
-            kind: 'user',
-            userId: TEST_USER_A,
-            isAnonymous: false,
-            appRoles: [],
-            providers: ['email'],
-            amr: [{ timestamp: TEST_NOW.getTime() / 1_000 - 61 }],
+            ok: true,
+            value: createTestUserAuthContext(TEST_USER_A, [
+              { method: 'email', timestamp: TEST_NOW.getTime() / 1_000 - 61 },
+            ]),
           };
         },
       },
@@ -379,14 +540,7 @@ describe('defineRoute HTTP pipeline', () => {
       overrides: {
         recentAuthMaxAgeSec: 900,
         async authenticateUser() {
-          return {
-            kind: 'user',
-            userId: TEST_USER_A,
-            isAnonymous: false,
-            appRoles: [],
-            providers: ['email'],
-            amr: [],
-          };
+          return { ok: true, value: createTestUserAuthContext(TEST_USER_A, []) };
         },
       },
     });
@@ -477,6 +631,42 @@ describe('defineRoute HTTP pipeline', () => {
     expect(first.status).toBe(200);
     expect(replay.status).toBe(200);
     await expect(replay.json()).resolves.toEqual({ result: 'saved' });
+    expect(handlerCalls).toBe(1);
+  });
+
+  it('replays a completed 204 response with the original bodyless status', async () => {
+    const test = createTestRouteDependencies();
+    let handlerCalls = 0;
+    const route = createDefineRoute(test.dependencies)({
+      operationId: 'postIdempotentNoContentTest',
+      auth: { kind: 'user' },
+      rateLimit: userRateLimit,
+      input: { body: z.strictObject({ value: z.string() }) },
+      idempotency: 'required',
+      successStatus: 204,
+      output: z.undefined(),
+      handler: async () => {
+        handlerCalls += 1;
+        return undefined;
+      },
+    });
+    const request = () =>
+      new Request('https://app.example/api/v1/test', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-token',
+          'Content-Type': 'application/json',
+          'Idempotency-Key': TEST_IDEMPOTENCY_KEY,
+          'x-real-ip': '198.51.100.12',
+        },
+        body: JSON.stringify({ value: 'same' }),
+      });
+
+    const first = await route(request());
+    const replay = await route(request());
+    expect(first.status).toBe(204);
+    expect(replay.status).toBe(204);
+    await expect(replay.text()).resolves.toBe('');
     expect(handlerCalls).toBe(1);
   });
 

@@ -15,5 +15,21 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     clearMocks: true,
     restoreMocks: true,
+    coverage: {
+      provider: 'v8',
+      include: [
+        'src/modules/*/domain/**/*.ts',
+        'src/modules/*/domain/**/*.tsx',
+        'src/modules/*/features/*/application/**/*.ts',
+        'src/modules/*/features/*/application/**/*.tsx',
+      ],
+      thresholds: {
+        branches: 80,
+        functions: 80,
+        lines: 80,
+        perFile: true,
+        statements: 80,
+      },
+    },
   },
 });
