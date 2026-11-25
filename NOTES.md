@@ -8,10 +8,15 @@
   ferramentas no commit `6eea6e8`; a tree do merge é a mesma validada.
   Ondas 1/2/3 em implementação paralela autorizada, uma por sessão/worktree,
   com agentes Luna/xhigh. Nenhuma delas está concluída.
-- **Próximo passo:** resolver as decisões de contrato/segurança abaixo, fechar
+- **Próximo passo:** fechar as fundações como template de desenvolvimento,
+  resolver as decisões de contrato/segurança abaixo e fechar
   os aceites pendentes e revisar cada onda antes
   de integrá-la em série. Ondas 4+ não iniciadas. GitHub Actions permanece
   desativado; a execução usa o ambiente local ou a KVM existente (ADR 0015).
+- **Integração local em andamento:** `chore/template-foundation-integration`
+  reúne os snapshots de W1/W2/W3 para verificação conjunta. A `main` permanece
+  intacta. Aceites externos de lançamento viram checklists do derivado; isso
+  não dispensa código funcional nem os testes reais de permissões do banco.
 - **Plano/evidências:** [onda 0](docs/plan/wave-0-execution.md). Quatro frentes de
   implementação e uma revisão independente configuradas com Luna/xhigh; instalação
   e lockfile centralizados. Commit de decisões de spec: `07a74b5`.

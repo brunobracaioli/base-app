@@ -5,8 +5,10 @@
 > espelha a coluna Status.
 
 Execução parcial de 2026-11-25: [evidências e critérios das ondas 1/2/3](waves-1-3-verification.md).
-As três permanecem pendentes; os gates de código não substituem o aceite de banco,
-os caminhos pré-Proxy nem os builds EAS ainda não verificados.
+O aceite segue o foco de template de desenvolvimento em base-app §2: código e
+provas locais são obrigatórios; contas, implantação e publicação do app derivado
+são etapas documentadas. Falhas do banco e contratos pendentes continuam bloqueando
+o aceite do código correspondente.
 
 | Onda | Entrega | Depende de | Paralela com | Status |
 |------|---------|------------|--------------|--------|
@@ -221,8 +223,9 @@ merge de uma por vez.
   account-lifecycle-and-privacy (auditoria e retenção); ADRs 0005, 0008.
 - **Escopo**:
   - **Spike S-DB-1** (primeiro): `set_config` com bind pelo pooler em modo transação.
-  - **Spike S-TM-4:** o `supabase config push` aplica todas as chaves de segurança do
-    `config.toml` gerado? As que só valem no painel vão para o how-to de configuração.
+  - **Spike S-TM-4:** documentar a cobertura do `supabase config push` e as chaves
+    locais/painel a partir da CLI versionada. A confirmação em um projeto hospedado
+    fica no checklist de configuração do derivado, sem alegar execução antecipada.
   - `supabase/config.base.toml` (Auth endurecido conforme identity-and-auth, SMTP para Mailpit
     no local, Data API e `pg_graphql` desligados), `supabase/config.d/` vazia com `.gitkeep` e o
     `supabase/config.toml` **gerado** por `pnpm supabase:config` (ADR 0014), com o aviso "gerado;
@@ -322,7 +325,10 @@ e-mail fora de parâmetro de rota (SH-N8 a SH-N11); fachada `extensions/api.ts`
   - `openExternalUrl` recusa `http:` e host fora da allowlist; `app.config.ts` resolvido sem
     tráfego em texto claro nem exceção de ATS.
   - Nenhuma rota executa efeito ao montar (teste de renderização das rotas).
-  - `eas build --profile development` gera build para as duas plataformas.
+  - Configuração Expo/EAS resolve, prebuilds e exports locais passam para as duas
+    plataformas; perfis e requisitos de assinatura ficam documentados. O build
+    EAS real é verificado pelo derivado depois de configurar conta/projeto,
+    sem bloquear sozinho a entrega do código do template.
 - **Verificação**: `pnpm --filter mobile test && pnpm --filter mobile typecheck && pnpm --filter mobile lint`
 
 ## Onda 4 — Auth na API, perfil e consentimentos

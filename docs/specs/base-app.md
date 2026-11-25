@@ -76,6 +76,30 @@ no núcleo vale para todas elas.
 
 ## 2. Requisitos
 
+### Aceite do template de desenvolvimento
+
+O entregável é o código reutilizável do template. Por orientação do dono em
+2026-11-25, o aceite do código é separado da configuração e do lançamento de
+cada app derivado. Não é necessário criar contas, preencher segredos, publicar
+um app ou fazer deploy para entregar o template.
+
+- Cada onda precisa de implementação correspondente, testes locais, contratos
+  e tipos coerentes, checks de segurança e instruções reproduzíveis. Fakes nas
+  portas verificam integrações sem afirmar que uma conta ou serviço foi criado.
+- Banco e isolamento continuam exigindo prova real com reset/pgTAP no ambiente
+  local ou KVM. Falhas funcionais ou de permissões não viram aceite por se
+  tratar de template.
+- Configuração hospedada, builds EAS com assinatura, compra em sandbox de loja,
+  envio real de e-mail e publicação são checklists do projeto derivado. O
+  template entrega os pontos de configuração, scripts e documentação; o
+  relatório distingue essas etapas de verificações já executadas.
+- Os critérios por onda indicam a prova local equivalente e a etapa externa
+  documentada. Não se usam IDs, credenciais ou resultados fictícios para
+  preencher uma etapa que depende do operador.
+
+Essa separação não retira login, assinatura, exclusão, exportação, gates de
+versão e bootstrap do escopo funcional do template.
+
 ### 2.1 Escopo (v1)
 
 **Dentro:**
