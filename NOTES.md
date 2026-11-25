@@ -24,12 +24,13 @@
   Branches `feat/w1-api-platform`, `feat/w2-supabase-baseline` e
   `feat/w3-mobile-shell`; o gerente coordena contratos compartilhados e integração.
 - **Verificação atual:** [relatório por critério](docs/plan/waves-1-3-verification.md).
-  W1 está no commit local `cf096e0`, com 18 gates e 216 testes aprovados.
-  W2 e o snapshot parcial W3 também passaram pelos 18 gates locais. No mobile,
-  `71845f4` corrige dependências vulneráveis e `5513866` corrige o boot com
-  campos opcionais vazios; a fachada continua pendente. Esta branch W2 usa
-  W1 como base local para validar a
-  integração; `main` permanece em `cda886d`. Não houve novo push nem PR.
+  A integração local reúne W1 `54e202a`, W2 `2859af1` e o snapshot W3
+  `96790e3`, além do guia de desenvolvimento e ADR 0016 proposto.
+  Instalação congelada, 17 tarefas de lint/typecheck/test (296 testes aprovados,
+  um teste condicionado à conexão real), arquitetura, formatação e build web
+  passaram. Isso não inclui a fachada W3 ainda em edição nem substitui pgTAP.
+  O checker TCP de W1 confirma o bloqueio pré-Proxy; a baseline W2 continua
+  com 21 falhas em 152 asserções pgTAP e um erro do hook de Auth.
   KVM, volumes, rede, certificados temporários e túnel da verificação foram
   removidos; os demais workloads foram preservados.
 - **Versão derivada:** o app-bootstrap (pago, repositório privado) estende este núcleo pelos
@@ -65,8 +66,8 @@
   após o ADR 0015. Plano, visibilidade e secrets não foram alterados.
 - Docker Desktop sem integração com esta distribuição WSL. A onda 2 usa Docker
   na KVM existente `ci-r3`, em namespace isolado e com portas em loopback. O
-  spike S-DB-1 comprovou TLS, claims por bind e limpeza após transação; migrations
-  e pgTAP completos ainda estão em execução. Nenhum projeto Supabase hospedado
+  spike S-DB-1 comprovou TLS, claims por bind e limpeza após transação; o reset passou e a suíte pgTAP
+  completa reprovou a baseline descrita abaixo. Nenhum projeto Supabase hospedado
   foi criado ou alterado.
 - `.env.example` declara as variáveis sem valores. A onda 1 acrescenta host,
   banco/TLS, Redis, e-mail e observabilidade; os requisitos estão em
@@ -78,16 +79,13 @@
   `%2e`/`%2e%2e` perdem a forma original. ADR 0003 registra a prova HTTP.
   O dono precisa decidir entre ajustar o aceite ou exigir uma camada anterior
   ao Next. A exigência atual de 404/headers não foi relaxada.
-- **Onda 2:** a purga de contas não confirmadas pertence a `auth_fn_owner`, mas
-  a spec não lhe dá um caminho de escrita para o evento de contagem exigido.
-  `set_setting` também precisa ler contagens de auditoria para o teto de 20
-  alterações/hora, sem grant de leitura ao dono `app_config_admin`.
-  Pendente decisão entre duas funções privadas de `ops`, restritas a essas
-  operações, ou grants/políticas estreitos. A proposta detalhada está no plano
-  do grupo. S-TM-4 também depende de projeto hospedado autorizado.
-  Os sinais de contas não confirmadas (acesso por função de `auth_fn_owner`)
-  e volume de e-mail (mapeamento de eventos do S-AU-4, hoje na onda 6) também
-  permanecem sem aceite; não foi concedido acesso direto de `ops` a `auth`.
+- **Onda 2:** [ADR 0016](docs/adr/0016-template-supabase-compatibility.md)
+  propõe funções de Auth pequenas pertencentes a `postgres`, helpers restritos
+  para contagem/purga/auditoria, reserva atômica do teto de cadastro e alertas
+  persistidos sem credenciais em `pg_net`. Consolidação da baseline experimental
+  e alteração mínima do AGENTS.md também dependem de decisão explícita.
+  Nenhuma dessas mudanças foi aplicada. O mapeamento de volume de e-mail
+  continua no S-AU-4; a configuração hospedada será verificada no app derivado.
 - **Bloqueio adicional da onda 2:** reset com sete migrations passou, mas
   pgTAP comprovou que `postgres` não consegue aplicar a baseline exigida em
   schemas gerenciados do Supabase. `auth_fn_owner` não recebe todos os grants
@@ -98,8 +96,10 @@
 - **Onda 3:** `withPreviousSession<T>` deve devolver o resultado seguro sem
   deixar escapar o token. Pendente decisão sobre restringir resultados a dados
   inspecionáveis e recusar valores opacos; a assinatura não foi trocada para
-  `void`. Exports e prebuilds locais passaram, mas os builds EAS reais de iOS e
-  Android continuam pendentes de conta, projeto e configuração de assinatura.
+  `void`. Exports e prebuilds locais passaram. O código independente da fachada
+  e três testes focados avançaram em W3; a árvore completa ainda reprova
+  typecheck/test no método pendente. Builds EAS reais dependem de conta,
+  projeto e assinatura do app derivado, conforme base-app §2.
 
 - Visibilidade: o repositório fica privado até a v1; depois vira público, como template do
   GitHub (licença MIT).

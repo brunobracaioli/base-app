@@ -33,7 +33,7 @@ Na raiz do repositório:
 pnpm --filter web dev
 ```
 
-Abra `http://127.0.0.1:3000`. O servidor de desenvolvimento define um host local quando
+Abra `http://localhost:3000`. O wrapper usa `localhost:3000` como host permitido quando
 `APP_HOST` não está configurado. A página inicial atual é uma tela simples da fundação; ela não
 comprova login, banco ou cobrança funcionando.
 

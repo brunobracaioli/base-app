@@ -5,19 +5,30 @@ continua no merge da onda 0 (`cda886d`). Nenhum novo push, PR ou deploy foi feit
 
 | Onda | Branch | Estado |
 | --- | --- | --- |
-| 1 | `feat/w1-api-platform` | `cf096e0` com ajuste de testes `1bc8237`; aceite de caminhos pré-Proxy pendente |
+| 1 | `feat/w1-api-platform` | `54e202a`; checker TCP reproduz o aceite pré-Proxy pendente |
 | 2 | `feat/w2-supabase-baseline` | Base local W1; reset, código, tipos e pooler TLS validados; pgTAP reprova a baseline de segurança |
-| 3 | `feat/w3-mobile-shell` | `347d415`; shell/client e correções de segurança, fachada e builds EAS pendentes |
+| 3 | `feat/w3-mobile-shell` | `96790e3` integrado; fachada em edição separada, contrato de sessão anterior pendente |
 
 Cada onda usou uma sessão/worktree própria. A integração local de W2 sobre W1
 permite compilar contra as interfaces reais, sem integrar essas ondas na main.
 Após o limite de uso dos coders Luna/xhigh, o dono autorizou o gerente a
-corrigir diretamente a onda 2.
+corrigir diretamente a onda 2. Nesta continuação, novas sessões Luna/xhigh
+voltaram a executar em paralelo. A branch local
+`chore/template-foundation-integration` reúne os snapshots das três ondas,
+o guia de desenvolvimento e as propostas; não altera a `main`.
+
+O foco aprovado é o código-fonte de um template, conforme base-app §2.
+Configuração hospedada, contas e publicação ficam no checklist do derivado;
+contratos incompletos e falhas reais de segurança continuam impedindo o aceite.
 
 ## Comandos e limites da evidência
 
 | Verificação | Resultado |
 | --- | --- |
+| Integração: instalação congelada | Passou com lockfile combinado, sem flexibilizar a política de dependências |
+| Integração: `pnpm turbo run lint typecheck test` | 17 tarefas aprovadas; 296 testes passaram e 1 exige conexão real, validada separadamente pelo harness TLS |
+| Integração: build web, arquitetura e formatação | Passaram |
+| W1 checker TCP em produção | Reprovou o aceite vigente: 308 antes do Proxy sem headers e normalização de segmentos; as cinco provas de isolamento com extensão temporária passaram |
 | W1 `pnpm ci:local` | 18 gates aprovados; inclui os 81 testes da API |
 | W1 build e HTTP em modo de produção | API, HTML e asset passaram; nonce do HTML coincide com CSP |
 | W2 instalação congelada | Passou com Node 24.22.3/pnpm 12.23.0 e política de supply chain preservada |
@@ -31,15 +42,15 @@ corrigir diretamente a onda 2.
 | W2 harness real pelo pooler TLS | Passou: claims, papéis, rollback, limpeza, microssegundos e auditoria atômica |
 | W3 snapshot parcial: lint, typecheck e Jest/RNTL | Passaram; 11 suítes/52 testes, incluindo campos opcionais vazios |
 | W3 Expo config, exports e prebuilds | Android/iOS passaram; não são builds EAS nem prova em dispositivo |
-| W3 worktree completa | Teste e typecheck ainda falham porque `extensions/api.ts` está ausente; seu teste foi preservado fora do commit parcial |
+| W3 worktree completa | Fachada independente implementada; 3 testes focados passaram. Teste/typecheck completos ainda falham no método `withPreviousSession`, aguardando decisão |
 
 Os recibos de `ci:local` ficam em `.artifacts/ci/` no checkout verificado. O
 recibo do harness TLS, seu código e os hashes estão em
 `.artifacts/w2-verification/`. O pgTAP usa um administrador descartável apenas
 para fixtures e para assumir os papéis sob teste; não executa as migrations
 como superusuário. Os helpers pgTAP ficam no schema temporário `test_support`.
-O comando de testes de `packages/config` seleciona somente `src`, evitando
-executar novamente os testes emitidos em `dist` durante o build.
+O comando de testes de `packages/config` exclui explicitamente `**/dist/**`,
+evitando executar novamente os testes emitidos durante o build.
 
 ## Onda 1 — critérios de aceite
 
@@ -95,24 +106,24 @@ Caminhos abaixo relativos a `apps/mobile/` na branch W3.
 | Headers, rota pública sem token, refresh e tradução | `src/shared/api-client/api-client.test.ts` | Passou; inclui correlação e mensagem genérica localizada |
 | Montagem com registro vazio e extensão fake | `src/features/shell/ui/app-providers.test.tsx` | Passou |
 | CAPTCHA provider único | `src/extensions/registry.test.ts` | Passou |
-| Fachada, sessão anterior e CAPTCHA dos métodos | `src/extensions/api.test.tsx` preservado | **Pendente:** sem implementação enquanto o domínio de retorno não for decidido |
+| Fachada, sessão anterior e CAPTCHA dos métodos | `src/extensions/api.test.tsx` preservado | **Parcial:** exports, CAPTCHA, resumo e ciclo de vida passaram em 3 testes focados; sessão anterior depende da decisão sobre retorno |
 | publicEnv e contexto sem sessão/tokens | Testes de registry e `types.type-test.ts` | Passou |
 | URLs externas, cleartext e ATS | Testes de URL/app config e prebuilds | Passou localmente |
 | Rotas sem mutação ao montar | Testes de arquitetura, providers e parâmetros | Passou |
 | Paridade de traduções | `src/shared/i18n/check-locale-parity.test.ts` | Passou |
-| Builds de desenvolvimento iOS/Android | EAS | **Não executados:** conta/projeto/assinatura pendentes |
+| Configuração, exports e prebuilds iOS/Android | Expo/EAS local | Passaram no snapshot; builds EAS assinados pertencem ao checklist do derivado, conforme base-app §2 |
 
 ## Decisões e ações externas
 
 - W1: decidir a exigência para caminhos normalizados antes do Proxy; ADR 0003
   registra a prova de 308 sem headers e perda da forma original de `%2e`.
 - W2: revisar base-app §3.8/ADR 0005 para o modelo suportado pelo Supabase atual;
-  decidir os caminhos mínimos de auditoria e o transporte de alertas. A proposta
-  no ADR não está aprovada. Não colocar segredos de envio numa baseline reprovada.
-- W2: escolher um projeto Supabase autorizado para S-TM-4; o envio SMTP/Mailpit
-  completo também permanece sem aceite enquanto o hook de cadastro falhar.
-- W3: decidir os resultados inspecionáveis de `withPreviousSession<T>`; fornecer
-  conta/projeto EAS e a configuração real de assinatura para os builds.
+  decidir os caminhos mínimos de auditoria e o transporte de alertas. A proposta consolidada
+  no [ADR 0016](../adr/0016-template-supabase-compatibility.md) não está aprovada. Não colocar segredos de envio numa baseline reprovada.
+- W2: validar localmente a capacidade da CLI no S-TM-4; confirmação no projeto
+  hospedado é do derivado. SMTP/Mailpit local continua sem aceite enquanto o hook falhar.
+- W3: decidir os resultados inspecionáveis de `withPreviousSession<T>`. Conta,
+  projeto EAS e assinatura só serão necessários para builds do app derivado.
 - W3: oito ocorrências vulneráveis em dependências transitivas foram corrigidas
   com pins e patch mínimo do EAS CLI (`71845f4`); o scan voltou a não apontar
   vulnerabilidades. `5513866` corrige o boot com campos opcionais vazios. O aviso
