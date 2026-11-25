@@ -116,10 +116,12 @@ select set_eq(
   $$
     values ('ops-purge-expired'::text, '17 3 * * *'::text,
             'select ops.purge_expired()'::text),
+           ('ops-purge-unconfirmed-users'::text, '47 3 * * *'::text,
+            'select ops.purge_unconfirmed_users()'::text),
            ('ops-check-signals'::text, '*/15 * * * *'::text,
             'select ops.check_signals()'::text)
   $$,
-  'the implemented maintenance routines have their exact pg_cron schedules'
+  'all three maintenance routines have their exact pg_cron schedules'
 );
 
 select * from finish();
