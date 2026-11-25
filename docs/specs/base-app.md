@@ -575,10 +575,16 @@ Regras:
 - **Fachada do app (`extensions/api.ts`).** Extensões do app não importam o cliente do Supabase
   (regra `supabase-client-only-in-auth`) nem o `api-client` do núcleo: usam `extensionAuth`,
   `useSessionSummary`, `extensionApiClient` e as props de `SettingsItem`. `withPreviousSession` é a
-  única passagem de um access token a código de extensão: o token vai só à `fn` recebida, nunca é
-  logado, persistido ou devolvido, e `fn` não pode devolver o token (o tipo devolve `T` definido pelo
-  chamador e o teste verifica que o valor não contém o token). Uso previsto: corpo de uma rota de
-  fusão, que chega ao servidor e lá passa por `verifyAccessToken`.
+  única passagem de um access token a código de extensão. A assinatura mantém callback com
+  `string` e retorno genérico `T`; sem sessão/token anterior, falha sem chamar a callback.
+  O retorno aceita somente dados simples inspecionáveis, inclusive `undefined`, conforme
+  mobile-app-shell §3.8: recusa token em strings/chaves, funções, getters, classes, ciclos
+  e valores opacos. Arrays e records são copiados e congelados antes de retornar. A sessão
+  capturada é descartada em `finally`, inclusive em falha, sem encerrar uma sessão primária
+  nova. Erros são sanitizados; nada de token em log, storage ou retorno do núcleo.
+  Extensões são código confiável, sem sandbox (R14/R29); a inspeção não impede efeitos
+  arbitrários do código da callback ou de traps de Proxy. Uso previsto: corpo de uma rota
+  de fusão, validado no servidor por `verifyAccessToken`.
 - **`publicEnv`** (`MobileExtension` e `SiteExtension`): chave que não comece com o prefixo do
   lado (`EXPO_PUBLIC_` no app, `NEXT_PUBLIC_` na web) ou cujo nome contenha `SECRET`,
   `KEY_PRIVATE` ou `TOKEN` faz o boot, o build e o teste falharem. Site key de CAPTCHA é
