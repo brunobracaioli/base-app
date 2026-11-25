@@ -2,21 +2,28 @@
 
 ## Status atual
 
-- **Fase:** onda 4 em execução, após integrar localmente as fundações 0–3 na
-  `main` (`4261bce`). Branch `feat/w4-auth-profile-consents`, worktree
-  `/tmp/app-base-w4`; nenhum push foi feito.
-- **Próximo passo:** aplicar as definições aprovadas do
-  [plano da onda 4](docs/plan/wave-4-execution.md), integrar a implementação depois do S-TM-3 aprovado
-  e validar Auth, perfil e consentimentos com os gates reais locais/KVM.
-- **Escopo:** uma onda nesta sessão. Login mobile, configuração remota da onda 5
-  e demais ondas não serão adiantados. Coders Luna/xhigh trabalham com ownership
-  separado; o gerente integra e verifica.
-- **Fundações:** ondas 0–3 concluídas, com [matriz de evidências](docs/plan/waves-1-3-verification.md).
-  O último gate de código aprovou 18 gates, 328 testes e um teste condicionado
-  à conexão real; pgTAP anterior passou em 198 asserções.
-- **Operação:** somente ambiente local/KVM existente; sem GitHub Actions,
-  projeto hospedado, deploy, publicação, novo PR ou credenciais no chat.
+- **Fase:** onda 4 concluída localmente, na branch `feat/w4-auth-profile-consents`
+  (`/tmp/app-base-w4`). Auth por JWKS, perfil e consentimentos estão implementados
+  e verificados. A `main` local contém as fundações 0–3 (`4261bce`); sem push.
+- **Próximo passo:** revisar/integrar a branch W4; depois executar a onda 5,
+  configuração remota e gates. Nenhuma onda 5+ foi iniciada.
+- **Evidências:** [verificação da onda 4](docs/plan/wave-4-verification.md) e
+  [plano de execução](docs/plan/wave-4-execution.md). Código `f4fb085` aprovado
+  em 18 gates locais, 405 testes e cobertura mínima por arquivo de domínio/aplicação.
+  Um teste condicionado à conexão é separado da prova real.
+- **Banco e Auth reais:** pgTAP passou em 238 asserções/12 arquivos; tipos de oito
+  tabelas sem drift. O harness passou 22 verificações com JWT/JWKS reais, handlers,
+  repositórios e PostgreSQL TLS. Rate limit/marcador/relógio foram fakes nas portas.
+- **Contratos:** OpenAPI 1.1.0; GET/PATCH `/v1/me`, POST `/v1/me/consents` com 204,
+  erros estáveis e limites fechados. `Me.createdAt` é a criação do perfil.
+  `identity.read_fresh_roles` só retorna os papéis do próprio usuário.
+- **Operação:** local/KVM existente, sem GitHub Actions, projeto hospedado,
+  deploy, publicação, novo PR ou credenciais no chat. Login mobile completo,
+  assinatura e demais funcionalidades permanecem nas ondas seguintes.
+- **Limpeza:** stack, volumes, rede, chaves/credenciais temporárias e túnel da
+  W4 removidos; workloads alheios da KVM preservados.
 - **Uso local:** [desenvolver a partir do template](docs/how-to/develop-from-template.md).
+  Fundamentos anteriores: [ondas 1–3](docs/plan/waves-1-3-verification.md).
 
 ## Roadmap
 
@@ -26,7 +33,7 @@
 | 1 | Plataforma da API | ✅ |
 | 2 | Baseline do Supabase | ✅ |
 | 3 | Casca do app mobile | ✅ |
-| 4 | Auth na API, perfil e consentimentos | ⬜ |
+| 4 | Auth na API, perfil e consentimentos | ✅ |
 | 5 | Configuração remota e gates | ⬜ |
 | 6 | Login por e-mail no app | ⬜ |
 | 7 | Assinatura | ⬜ |

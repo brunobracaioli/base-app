@@ -108,3 +108,16 @@ registrados no [relatório de verificação](../plan/waves-1-3-verification.md).
 continua dependendo das ondas seguintes. A baseline consolidada atende bancos novos do template;
 um projeto que já aplicou as migrations experimentais antigas precisa de um plano próprio.
 A confirmação de configuração hospedada do S-TM-4 permanece no checklist do derivado.
+
+## API de perfil e consentimentos
+
+A onda 4 acrescenta GET/PATCH `/api/v1/me` e POST `/api/v1/me/consents`, todos
+com Bearer token verificado. No servidor do derivado, preencha APP_HOST,
+SUPABASE_URL, DATABASE_URL (usuário `api_runtime`), DATABASE_CA_CERT e as duas
+variáveis UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN em `.env.local`.
+O URL do Supabase usa HTTPS; HTTP de loopback é aceito somente em dev/test.
+Sem essas integrações, uma rota protegida falha fechada; a página básica e
+o build continuam disponíveis. Nunca use chave administrativa no runtime.
+
+Veja a [prova da onda 4](../plan/wave-4-verification.md). O login completo do
+app mobile continua na onda 6; esta entrega é a API e seus contratos.

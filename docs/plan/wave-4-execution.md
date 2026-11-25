@@ -115,3 +115,9 @@ Vitest já fixado e elegível pela quarentena; foi publicada em 2026-11-18.
 A 5.1.2 é a tag latest, publicada em 2026-11-25, ainda dentro dos 1440 minutos
 bloqueados. Manter o par 5.1.1 preserva a política de supply chain sem afrouxá-la.
 Versões exatas e lockfile ficam com o gerente; nenhum worker instala dependências.
+
+## Fechamento
+
+Onda concluída localmente. A [matriz final](wave-4-verification.md) registra os
+comandos, o alcance dos fakes e as provas reais. Nenhuma decisão permanece
+pendente nesta onda; as etapas do app derivado continuam separadas.
