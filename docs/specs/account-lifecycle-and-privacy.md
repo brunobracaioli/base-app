@@ -190,7 +190,9 @@ Detalhes:
   exige que `p_subject_ref` seja 64 caracteres hexadecimais e só opera sobre o usuário em purga.
   Trocar a chave depois separa os registros antigos dos novos; por isso ela não é rotacionada.
 - **`privacy.delete_auth_user(user_id)`:** função `SECURITY DEFINER` (`search_path = ''`)
-  executável só por `privacy_system` e dona de `auth_fn_owner`. Apaga **explicitamente**, antes do
+  executável só por `privacy_system` e com owner `postgres` quando a W9 a implementar e incluir
+  no registry fechado com a revisão de ameaça e os testes da spec. Não está autorizada pelo
+  registry W2. Apaga **explicitamente**, antes do
   usuário, as linhas de `auth.audit_log_entries` (por `payload->>'actor_id'`; elas não têm FK e
   guardam e-mail e IP) e de `auth.flow_state`, e então o usuário em `auth.users`; as FKs `on
   delete cascade` removem identidades, sessões, refresh tokens, fatores e códigos. É sempre o
@@ -198,10 +200,10 @@ Detalhes:
   fora do nosso alcance o que as plataformas guardam nos próprios logs (retenção do Supabase por
   plano), e a trilha de login do titular deixa de existir no Auth (tensão aceita com R-ID-5; o
   `audit.events` pseudonimizado continua). O spike S-PR-1 (onda 9) confirma o alcance das FKs,
-  quais grants `auth_fn_owner` consegue receber em `auth` e o custo do `delete` em
+  operações Auth suportadas por uma função estreita de owner `postgres` e o custo do `delete` em
   `audit_log_entries` (sem índice por `actor_id`); se for lento, a limpeza vira lote diário em
-  `ops.purge_expired()` para as linhas órfãs. Se nada disso bastar, a chave secreta volta ao
-  runtime, restrita a Production, marcada como Sensitive e usada só depois do commit local.
+  `ops.purge_expired()` para as linhas órfãs. A chave secreta não volta ao runtime sem outra
+  decisão de segurança.
 - **Falha:** erro em qualquer handler (RevenueCat fora, timeout) desfaz tudo e a resposta é 503
   `privacy.deletion_unavailable` com `Retry-After`. O app oferece "tentar de novo". Efeito
   externo já aplicado (cliente do RevenueCat apagado) é idempotente e não impede a nova
@@ -593,14 +595,9 @@ A função de expurgo roda em lotes se o volume crescer (loop de 5 000 linhas). 
 alcança o papel `ops`. O `set_config` com `true` vale só na transação.
 
 ```sql
--- schema privacy: funções da purga (executáveis só por privacy_system; dona: auth_fn_owner, NOLOGIN, só os grants abaixo)
--- create role auth_fn_owner nologin;
--- grant usage on schema auth to auth_fn_owner;
--- conjunto FIXO de grants de auth_fn_owner no schema auth (base-app.md §3.8); o pgTAP compara e falha em qualquer diferença:
--- grant select, delete, update (banned_until, encrypted_password, raw_app_meta_data) on auth.users to auth_fn_owner;
--- grant select, delete on auth.sessions, auth.refresh_tokens, auth.identities to auth_fn_owner;
--- grant delete on auth.audit_log_entries, auth.flow_state to auth_fn_owner;   -- alcance confirmado no spike S-PR-1
--- funções de extensão transferidas a auth_fn_owner entram em supabase/tests/auth-fn-registry.d/<ext>.json
+-- Exemplo contratual para a futura onda de privacidade; não faz parte da migration W2.
+-- Owner postgres, search_path vazio, SQL fixo, EXECUTE apenas por privacy_system;
+-- W9 adiciona as assinaturas ao registry fechado e testa a autorização.
 create function privacy.lookup_email_for_purge(p_user_id uuid)
   returns table (email text, locale text)
 language plpgsql security definer set search_path = '' as $$
@@ -634,9 +631,9 @@ begin
   delete from auth.users where id = p_user_id;
 end $$;
 
-alter function privacy.lookup_email_for_purge(uuid) owner to auth_fn_owner;
-alter function privacy.delete_auth_user(uuid) owner to auth_fn_owner;
-alter function privacy.is_anonymous_user(uuid) owner to auth_fn_owner;
+alter function privacy.lookup_email_for_purge(uuid) owner to postgres;
+alter function privacy.delete_auth_user(uuid) owner to postgres;
+alter function privacy.is_anonymous_user(uuid) owner to postgres;
 revoke all on function privacy.lookup_email_for_purge(uuid), privacy.delete_auth_user(uuid),
   privacy.is_anonymous_user(uuid) from public;
 grant execute on function privacy.lookup_email_for_purge(uuid), privacy.delete_auth_user(uuid),
@@ -952,7 +949,7 @@ guardada seria apagada junto com a conta.
 
 | # | Item | Padrão adotado |
 |---|------|----------------|
-| S-PR-1 | `delete from auth.users` por função definer limpa identidades, sessões, refresh tokens e fatores? O `auth_fn_owner` consegue receber os grants mínimos em `auth`? Quanto custa o `delete` em `auth.audit_log_entries` por `actor_id`? (onda 9) | as FKs limpam o que têm; `audit_log_entries` e `flow_state` são apagados explicitamente (§3.2); se os grants forem impossíveis, a chave secreta volta ao runtime, restrita a Production, usada só depois do commit local |
+| S-PR-1 | `delete from auth.users` por função definer limpa identidades, sessões, refresh tokens e fatores? Quais operações são suportadas por helper estreito owner `postgres`? Quanto custa o `delete` em `auth.audit_log_entries` por `actor_id`? (onda 9) | validar as FKs e a função mínima sob credencial `postgres`; `audit_log_entries` e `flow_state` só são apagados explicitamente se a prova e a autorização da W9 permitirem; a chave secreta não volta ao runtime sem decisão própria |
 | S-TM-1 | O SDK do RevenueCat recria o cliente apagado quando outro aparelho do mesmo usuário continua aberto? (onda 7) | risco residual R22; o app chama `Purchases.logOut()` ao receber `auth.account_deleted` |
 | Q-PR-1 | Carência na exclusão | não existe no base-app; a porta `AccountDeletionPolicy` e o contrato `scheduled` deixam o caminho aberto |
 | Q-PR-2 | O export inclui o perfil, mas `privacy` não pode importar `identity` (o grafo de contextos só tem `identity → privacy`) | `privacy` declara a porta `ProfileReader`, ligada na composição à consulta pública `identity.getProfile` |

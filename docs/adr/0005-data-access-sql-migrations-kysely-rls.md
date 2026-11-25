@@ -1,6 +1,6 @@
 # ADR 0005 — Acesso a dados: migrations SQL, Kysely, RLS e Data API fechada
 
-- **Status:** proposed
+- **Status:** accepted — revisado pelo ADR 0016 em 2026-11-25
 - **Data:** 2026-11-24
 
 ## Contexto
@@ -13,7 +13,9 @@ repositório e RLS como segunda barreira.
 ## Decisão
 
 1. **Schema como código.** Migrations SQL em `supabase/migrations/`, aplicadas pelo Supabase
-   CLI. Migration aplicada é imutável: erro se corrige com migration nova.
+   CLI. Migration aplicada é imutável: erro se corrige com migration nova. A única
+   exceção aprovada é consolidar esta baseline experimental ainda não publicada
+   (ADR 0016); bancos existentes precisam de plano próprio.
 2. **Um schema Postgres por contexto que tem tabelas:** `identity`, `privacy`, `app_config`.
    Mais `platform` (chaves de idempotência), `audit` e `ops`. O contexto `billing` não tem
    tabelas no base-app (ADR 0006). `public` fica vazio e sem grants para `anon` e
@@ -57,12 +59,18 @@ repositório e RLS como segunda barreira.
    injeção de SQL ou execução de código na API ainda poderia trocar de papel. O expurgo é feito
    por `ops.purge_expired()` (`SECURITY DEFINER`), agendada no `pg_cron` (ADR 0008). A trava de
    `audit.events` confere `current_user = 'ops'`, além do GUC.
-   **Funções `SECURITY DEFINER` que tocam `auth`** (`privacy.lookup_email_for_purge`,
-   `privacy.is_anonymous_user`, `privacy.delete_auth_user`, `identity.clear_unverified_password`,
-   `identity.before_user_created`, `ops.purge_unconfirmed_users`) pertencem ao papel `auth_fn_owner`
-   (NOLOGIN, com um conjunto fixo de grants em `auth` (base-app §3.8), nunca `postgres`), têm `search_path = ''` e as de
-   purga só operam sobre o usuário em `app.purge_user_id`. Isso reduz erro de código; não impede
-   injeção de SQL (R11).
+   **Funções `SECURITY DEFINER` que tocam `auth`** são funções pequenas do núcleo,
+   pertencem a `postgres`, usam SQL fixo, relações qualificadas e `search_path = ''`.
+   A matriz exata de assinatura, dono, migration e chamadores fica no registro
+   `supabase/tests/core-auth-fn-registry.json` (ADR 0016). Na W2, o hook só é
+   executável por `supabase_auth_admin`; contagem e exclusão de contas não
+   confirmadas só por `ops`. Não há grants de Auth a papéis customizados nem
+   transferência de funções de extensão a `postgres`.
+   Funções futuras de purga validam UUID não nulo e correspondência com
+   `app.purge_user_id`. GUC vincula a operação à transação, não autentica o
+   chamador; JWT, login recente e capacidade de purga continuam na API (R11).
+   A função de contagem escalar de auditoria pertence a `ops`, é executável
+   somente por `app_config_admin` e não lhe dá SELECT em `audit.events`.
 10. **RLS habilitado e forçado** (`force row level security`) em toda tabela, com teste pgTAP por
     política, incluindo acesso de um usuário à linha de outro.
 11. **As extensões nunca alteram tabelas do núcleo.** Uma extensão cria schema, papel
@@ -81,10 +89,11 @@ repositório e RLS como segunda barreira.
 
 ## Consequências
 
-- **Teste de catálogo (G26):** o pgTAP falha para qualquer tabela fora dos schemas de sistema
-  sem RLS habilitado e forçado, com grant para `anon`/`public`, ou com grant de `authenticated`
-  fora de `supabase/tests/grants-allowlist.json`. `anon` e `authenticated` não têm privilégio em
-  `storage` nem `realtime` (desligados; revogados por migration).
+- **Teste de catálogo (G26):** tabelas da aplicação e extensões exigem RLS habilitado e
+  forçado, sem grant para `anon`/`public` e com grants de `authenticated` somente na
+  allowlist. Objetos gerenciados pelo Supabase são identificados separadamente:
+  Storage/Realtime ficam desabilitados, sem buckets/policies da aplicação, com
+  negativas funcionais. Não se afirma que `postgres` revogou ACLs que não controla.
 - Os papéis-grupo `audit_writer`, `audit_operator_writer`, `audit_reader` e `app_config_writer` têm os membros conferidos
   por pgTAP contra `supabase/tests/expected-group-members.json`.
 - Toda tabela nova exige migration, RLS forçado, grants por papel, pgTAP (inclusive acesso
@@ -124,44 +133,33 @@ A associação administrativa que o servidor cria para `postgres`, sem SET nem
 INHERIT, permanece gerenciada pelo provedor e não é uma associação de execução
 da aplicação. [Procedimento oficial do Supabase](https://supabase.com/kb/troubleshooting/cant-revoke-a-role-membership-granted-by-supabase_admin-d08922).
 
-**A decisão acima ainda não é implementável como especificada no ambiente
-testado.** O reset executado como `postgres` termina, mas o catálogo mostra
+**Evidência da baseline anterior, substituída pelo ADR 0016.** O reset executado como `postgres` termina, mas o catálogo mostra
 `auth_fn_owner` sem USAGE em `auth` e sem parte dos grants exigidos. O hook
 falha ao acessar esse schema. Também permanecem privilégios gerenciados de
 Storage e acesso às filas/respostas de `pg_net`, reprovando a baseline. Não
 foram usados grants de `supabase_admin` nas migrations para esconder o problema.
 A documentação oficial confirma que `postgres` não pode conceder USAGE de
 `auth` a um papel customizado e propõe funções pertencentes a `postgres`, o que
-contraria a decisão 9 deste ADR. [Restrição oficial de acesso ao Auth](https://supabase.com/kb/troubleshooting/permission-errors-when-granting-custom-roles-access-to-the-auth-schema-9e32e7).
+contrariava a versão anterior da decisão 9. [Restrição oficial de acesso ao Auth](https://supabase.com/kb/troubleshooting/permission-errors-when-granting-custom-roles-access-to-the-auth-schema-9e32e7).
 
-**Decisão necessária:** revisar o modelo de privilégios/provedor antes de
-concluir a onda 2. Não se adotou função de Auth pertencente a `postgres`, chave
-administrativa no runtime, concessão de superusuário ou relaxamento do teste.
-O administrador descartável é usado somente para preparar fixtures pgTAP e
-trocar para os papéis sob teste; o catálogo continua refletindo migrations
-executadas como `postgres`.
-
-**Proposta para revisão, não aplicada:** substituir a regra de proprietário
-das funções de Auth pelo padrão suportado de funções pequenas pertencentes a
-`postgres`, mantendo `search_path` vazio, argumentos validados e EXECUTE
-restrito por caso de uso. Isso amplia a autoridade do definidor e exige nova
-revisão do threat model, das specs e dos testes. Separadamente, o envio via
-`pg_net` precisa garantir que filas e respostas não sejam acessíveis ao
-runtime; se essa restrição não for suportada, revisar o transporte no ADR
-0008. Não preencher os segredos de envio enquanto essa baseline reprovar.
+**Revisão aprovada:** o dono aceitou o ADR 0016 em 2026-11-25. Funções
+restritas pertencentes a `postgres` substituem o grant impossível; o transporte
+via `pg_net` sai da baseline. A autoridade maior do definidor é risco residual,
+mitigado por registro fechado, SQL fixo, chamadores mínimos e testes negativos.
+A aprovação não transforma as falhas antigas em sucesso: reset e pgTAP da nova
+baseline precisam passar. Migrations continuam executadas como `postgres`;
+`supabase_admin` só prepara fixtures e assume os papéis de teste.
 
 Tipos são gerados do banco real com nomes de tabela qualificados. O mapeamento
 explícito de `timestamp`/`timestamptz` para `string` coincide com os parsers do
 pool e preserva microssegundos; `--date-parser string` sozinho não altera esses
 dois tipos no kysely-codegen 0.20.0.
 
-**Guarda estática de auditoria.** Os inserts atômicos de `app_config.set_setting`
-e `ops.purge_expired` já são exigidos pelas specs. As três migrations que os
-definem têm exceção somente à regra SQL genérica de insert do Semgrep; as
-outras regras continuam ativas. `db:lint-migrations` também usa o parser real
-de PostgreSQL 17 para checar todas as migrations: só essas assinaturas, com
-retorno void, PL/pgSQL, SECURITY DEFINER e search_path vazio, podem inserir
-auditoria. Inserts avulsos, outra função, overload, contexto forjado por
-comentário e search_path inseguro reprovam. Ownership e ACL continuam sendo
-verificados no pgTAP. A regra de escrita da aplicação por `platform/audit`
-permanece sem exceções novas.
+**Guarda estática de auditoria.** Inserts atômicos só são permitidos nas
+assinaturas fixas de `app_config.set_setting`, `ops.purge_expired` e
+`ops.purge_unconfirmed_users`, exigidas pelas specs. O parser PostgreSQL 17
+valida retorno, linguagem, SECURITY DEFINER e search_path; outra função,
+overload, SQL dinâmico, insert avulso ou contexto forjado por comentário
+reprovam. A exceção Semgrep fica nessas migrations, sem desligar as outras
+regras. Ownership e ACL são conferidos pelo pgTAP. Código da aplicação
+continua escrevendo apenas por `platform/audit`.

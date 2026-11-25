@@ -1,8 +1,8 @@
 # ADR 0016 — Baseline do template compatível com o Supabase
 
-- **Status:** proposed — depende de decisão do dono
+- **Status:** accepted — decisão do dono em 2026-11-25; implementação e gates W2 ainda pendentes
 - **Data:** 2026-11-25
-- **Revisa, se aprovado:** ADRs 0005/0008, base-app §3.8, specs de Auth/configuração/privacidade e a regra correspondente do AGENTS.md.
+- **Revisa:** ADRs 0005/0008/0013, base-app §3.8, specs de Auth/configuração/privacidade, threat model e a regra correspondente do AGENTS.md.
 
 ## Contexto
 
@@ -19,7 +19,7 @@ Resend não ficam isolados por nossos REVOKEs.
 - [Permissões do Auth](https://supabase.com/kb/troubleshooting/permission-errors-when-granting-custom-roles-access-to-the-auth-schema-9e32e7)
 - [ACLs de pg_net](https://supabase.com/kb/troubleshooting/revoking-access-to-pg_net-objects-has-no-effect-0bbc16)
 
-## Proposta de decisão
+## Decisão
 
 Manter Data API desligada, papéis por contexto, `api_runtime` sem herança,
 RLS forçado nas tabelas da aplicação, TLS, auditoria e validação. Substituir
@@ -28,17 +28,20 @@ somente as partes incompatíveis abaixo.
 | Operação W2 | Proprietário | Chamador permitido |
 | --- | --- | --- |
 | `identity.before_user_created(jsonb)` | `postgres` | `supabase_auth_admin` |
-| Contagem fixa de contas por e-mail não confirmadas | `postgres` | `ops` |
-| Exclusão em lotes de 500 de contas elegíveis, sem filtro fornecido pelo chamador | `postgres` | `ops` |
+| `identity.count_unconfirmed_users()` | `postgres` | `ops` |
+| `identity.delete_unconfirmed_users()` (máximo de 500 contas por chamada) | `postgres` | `ops` |
 | `ops.purge_unconfirmed_users()` e `ops.check_signals()` | `ops` | `postgres`/agendador |
-| Contagem escalar de `app_config.updated` na última hora | `ops` | `app_config_admin` |
+| `ops.app_config_change_count_last_hour()` (contagem escalar de `app_config.updated` na última hora) | `ops` | `app_config_admin` |
 
-Todas as funções definidoras têm SQL fixo, relações qualificadas, search_path
-vazio e EXECUTE revogado de PUBLIC e dos demais papéis. O registro de funções
-privilegiadas fica fechado às funções do núcleo desta onda; extensões não
-ganham autorização genérica para criar funções de Auth pertencentes a
-`postgres`. Funções de privacidade e limpeza de senha continuam nas ondas
-próprias, sem implementação antecipada.
+As três funções Auth têm SQL fixo, relações qualificadas, `search_path` vazio,
+owner `postgres` e EXECUTE revogado de `PUBLIC` e dos demais papéis. O registry
+`supabase/tests/core-auth-fn-registry.json` vincula schema, nome, assinatura,
+migration definidora, owner, chamadores e propósito; pgTAP confere também ACLs
+negativas. O registry é fechado às três funções W2: extensões não podem criar,
+transferir ou registrar funções que toquem em `auth`. Funções de privacidade e
+limpeza de senha continuam nas ondas próprias; a onda correspondente adiciona
+suas entradas exatas ao registry fechado com a revisão de ameaça e os testes da
+spec, sem autorização genérica para extensões.
 
 O wrapper `ops` grava a contagem de purga com seu grant de auditoria já
 existente. `app_config_admin` recebe somente a função escalar de contagem,
@@ -46,13 +49,21 @@ continuando sem SELECT direto dos eventos.
 
 ### Limite concorrente de cadastro
 
-O COUNT seguido de aprovação do hook não garante o teto sob concorrência.
-Propõe-se uma reserva atômica em janela móvel de uma hora, com no máximo 300
-tentativas aprovadas. A tabela guarda somente identificador opaco e horário,
-sem usuário, e-mail ou IP. Expurgo das reservas vencidas, contagem e inserção
-ocorrem sob o mesmo lock transacional fixo. Falhas posteriores do Auth e
-repetições podem consumir uma vaga por até uma hora; isso favorece o teto
-estrito em vez de prometer contar somente cadastros concluídos.
+Uma contagem de contas seguida de aprovação do hook não garante o teto sob
+concorrência. `identity.signup_reservations` armazena apenas `reservation_id`
+(UUID opaco) e `reserved_at`, sem usuário, e-mail ou IP. Sob um advisory lock
+transacional fixo, o hook expurga reservas vencidas, conta a janela móvel de
+uma hora e insere a reserva na mesma seção crítica; apenas 300 chamadas do hook
+podem ser aprovadas nessa janela. O hook valida o objeto e `user`, mas não
+depende de `user.email`, para aceitar contas anônimas sem e-mail. Evento
+malformado, lock/consulta que excede o limite ou falha de banco não libera o
+cadastro. A função limita a espera do lock a 1 500 ms e a instrução SQL a
+1 750 ms, antes do timeout de 2 s do Auth. A versão Auth `v2.198.0` invoca o hook fora da transação que cria o
+usuário; a fonte fixada está em
+[`signup.go`](https://github.com/supabase/auth/blob/v2.198.0/internal/api/signup.go)
+e [`hooks.go`](https://github.com/supabase/auth/blob/v2.198.0/internal/api/hooks.go).
+Assim, falhas posteriores do Auth e retries consomem uma vaga por até uma hora;
+o teto conta aprovações do hook, não contas concluídas, e não deduplica retries.
 
 ### Alertas e superfícies gerenciadas
 
@@ -63,20 +74,25 @@ volume de e-mail depende do mapeamento S-AU-4 e não é inventado.
 
 As provas de privilégio distinguem tabelas da aplicação de objetos gerenciados
 pelo provedor. Mantêm ACLs exatas, RLS e negativas funcionais no app; para
-Storage/Realtime verificam a superfície desabilitada e ausência de acesso a
-dados, sem afirmar que um REVOKE sem efeito removeu ACLs do Supabase.
+Storage/Realtime verificam configuração desabilitada, ausência de buckets/uso
+da aplicação e a fronteira acessível, sem afirmar que um `REVOKE` sem efeito
+removeu ACLs do Supabase.
 
 ### Histórico de migrations
 
-Para este template ainda não publicado, propõe-se consolidar a baseline
+Para este template ainda não publicado, consolidar a baseline
 experimental em migrations novas e coerentes, preservando seu histórico no
 Git. Isso exige autorização explícita como exceção à imutabilidade dos
 arquivos já aplicados em laboratórios descartáveis. Não autoriza alterar
 banco existente. Projetos que já aplicaram a baseline antiga exigem plano de
 migração próprio; não se remove `pg_net`, filas ou webhooks de um projeto
-existente automaticamente.
+existente automaticamente. A migration consolidada exige `current_user = postgres`,
+não encontra o papel legado `api_runtime` nem a extensão `pg_net`, e não encontra
+as credenciais de alerta antigas em `vault.secrets`; se uma checagem não puder
+ser feita, ela falha com orientação para inspeção e migration separada. Nenhum
+`DROP EXTENSION` ou cleanup remoto é executado.
 
-## Provas exigidas antes de aceitar
+## Provas exigidas antes de concluir a onda 2
 
 - Reset e suíte pgTAP completos, sem fixtures que concedam grants ausentes nas migrations.
 - Hook sob o papel real de Auth e teste concorrente do teto; entrada inválida e cota esgotada falham fechadas.
@@ -94,6 +110,7 @@ allowlist e revisão/testes; não de um grant impossível. GUCs vinculam a opera
 à transação, mas não autenticam o chamador. A autorização do usuário continua na
 API, baseada em JWT verificado e na capacidade de purga quando ela for implementada.
 
-A aprovação deve incluir a atualização estritamente necessária do AGENTS.md e
-das specs/ADRs, sem sobrescrever o restante do guia. Até lá, esta é somente uma
-proposta; nenhuma dessas permissões, remoções ou consolidações foi executada.
+Esta decisão aprova somente o desenho e a consolidação da baseline inédita do
+template. Não autoriza alteração de banco Supabase existente, remoção de
+extensões, criação de projeto hospedado nem publicação. A onda 2 permanece
+pendente até os gates acima passarem.

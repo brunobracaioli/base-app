@@ -1,0 +1,31 @@
+{
+  "functions": [
+    {
+      "schema": "identity",
+      "name": "before_user_created",
+      "signature": "(jsonb)",
+      "migration": "20261125175958_w2_supabase_compatibility_baseline.sql",
+      "owner": "postgres",
+      "executeCallers": ["supabase_auth_admin"],
+      "purpose": "Reserve one anonymous signup slot atomically under the rolling project-wide cap."
+    },
+    {
+      "schema": "identity",
+      "name": "count_unconfirmed_users",
+      "signature": "()",
+      "migration": "20261125175958_w2_supabase_compatibility_baseline.sql",
+      "owner": "postgres",
+      "executeCallers": ["ops"],
+      "purpose": "Return only the count of non-anonymous users with an e-mail that is not confirmed."
+    },
+    {
+      "schema": "identity",
+      "name": "delete_unconfirmed_users",
+      "signature": "()",
+      "migration": "20261125175958_w2_supabase_compatibility_baseline.sql",
+      "owner": "postgres",
+      "executeCallers": ["ops"],
+      "purpose": "Delete at most 500 non-anonymous e-mail accounts that remain unconfirmed after three days."
+    }
+  ]
+}

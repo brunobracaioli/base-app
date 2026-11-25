@@ -134,24 +134,15 @@ ponto de extensão) e vira PR no base-app.
   `$schema`, `functions`, `schedules`, `crons` e `regions`; `headers`, `rewrites`, `redirects` e
   `routes` são proibidos porque a borda é do middleware do núcleo. Os dois rodam no CI do núcleo e
   no da derivada.
-- **Funções de extensão sobre `auth` (D22).** `auth_fn_owner` tem um conjunto fixo de grants em
-  `auth` (users: `select`, `delete`, `update (banned_until, encrypted_password, raw_app_meta_data)`; sessions,
-  refresh_tokens, identities: `select` e `delete`; audit_log_entries e flow_state: `delete`). Uma
-  extensão cria no próprio schema uma função `SECURITY DEFINER` com `search_path = ''` e a
-  transfere a `auth_fn_owner`; declara cada uma em `supabase/tests/auth-fn-registry.d/<ext>.json`
-  (o pgTAP compara a lista real com núcleo mais `.d`); `execute` só para o `<ext>_system` dono do
-  caso de uso. Papéis auxiliares começam por `<ext_schema>_`. São exceções fechadas do
-  `db:lint-migrations`.
-  O guard valida os registros JSON com schemas estritos, sem procurar nomes em
-  strings arbitrárias de documentos. A serialização da onda 0 é:
-
-  ```json
-  { "functions": [{ "name": "grant_role", "signature": "()", "reason": "Conceder o papel de produto pela porta autorizada" }] }
-  ```
-
-  Esse documento fica em `supabase/tests/auth-fn-registry.d/<ext>.json`; `name`
-  é o identificador local ao schema da extensão e `signature` contém a lista
-  de argumentos PostgreSQL entre parênteses. Nome/assinatura são únicos.
+- **Funções de extensão sobre `auth` (D22, revisado pelo ADR 0016).** O modelo
+  anterior de grants para `auth_fn_owner` não é suportado pelo Supabase.
+  Extensões não podem criar funções pertencentes a `postgres`, tocar Auth nem
+  acrescentar entradas privilegiadas via `auth-fn-registry.d`. A guarda recusa
+  esse diretório legado. Somente o núcleo mantém o registro estrito
+  `supabase/tests/core-auth-fn-registry.json`, comparado com o catálogo pelo
+  pgTAP. Uma extensão que precise de operação nova solicita uma porta genérica
+  ao núcleo, com spec, threat model e teste; não amplia o registro sozinha.
+  Papéis auxiliares continuam com prefixo `<ext_schema>_` e associações explícitas.
   O registro de grupos em `expected-group-members.d/<ext>.json` é:
 
   ```json

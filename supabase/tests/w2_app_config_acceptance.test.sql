@@ -99,6 +99,25 @@ select throws_ok($sql$
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null
   )
 $sql$, '22023', null, 'set_setting rejects a null actor type');
+select throws_ok($sql$
+  select app_config.set_setting(
+    'maintenance', '{}'::jsonb, 'system', null,
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null
+  )
+$sql$, '22023', null, 'set_setting rejects a null system actor reference');
+select throws_ok($sql$
+  select app_config.set_setting(
+    'maintenance', '{"active":true}'::jsonb, 'operator',
+    '11111111-1111-4111-8111-111111111111',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null
+  )
+$sql$, '42501', null, 'an operator without app.operator_id is rejected');
+select throws_ok($sql$
+  select app_config.set_setting(
+    'maintenance', '{"active":true}'::jsonb, 'operator', null,
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null
+  )
+$sql$, '42501', null, 'set_setting rejects a null operator reference');
 
 select set_config('app.operator_id', '22222222-2222-4222-8222-222222222222', true);
 set local role app_config_writer;
@@ -153,6 +172,28 @@ select ok(
           and metadata -> 'after' = '{"active":true}'::jsonb
    from audit.events where correlation_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'),
   'the audit event records the before and after values'
+);
+
+select set_config('test.maintenance_after_success',
+  (select updated_at::text from app_config.settings where key = 'maintenance'), true);
+set local role app_config_writer;
+select throws_ok($sql$
+  select app_config.set_setting(
+    'maintenance', '{"active":false}'::jsonb, 'operator',
+    '11111111-1111-4111-8111-111111111111', null,
+    current_setting('test.maintenance_after_success', true)::timestamptz
+  )
+$sql$, '23502', null, 'an audit insert failure aborts the setting mutation');
+reset role;
+select is(
+  (select value from app_config.settings where key = 'maintenance'),
+  '{"active":true}'::jsonb,
+  'a failed audit insert rolls back the setting value in the same transaction'
+);
+select is(
+  (select count(*)::integer from audit.events where correlation_id is null),
+  0,
+  'a failed audit insert leaves no partial event'
 );
 
 set local role app_config_writer;

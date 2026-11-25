@@ -34,8 +34,9 @@ partir de [specs/base-app.md](../specs/base-app.md).
 | `SENTRY_DSN` | API | Não (identificador de projeto, tratar como configuração) |
 | `EXPO_PUBLIC_SENTRY_DSN` | App | Não |
 | `EXPO_PUBLIC_API_URL` | App (base da API) | Não |
-| `SMTP_PASS` (`config.toml`: `env(...)`) | Supabase Auth (SMTP do Resend) | **Sim** |
-| `SUPABASE_DB_URL_MIGRATOR` | CI: `supabase db push` (papel `migrator`) | **Sim** |
+| `SMTP_HOST` (`config.toml`: `env(...)`) | Supabase Auth, host SMTP por ambiente | Não |
+| `RESEND_SMTP_PASSWORD` (`config.toml`: `env(...)`) | Supabase Auth, senha SMTP | **Sim** |
+| `SUPABASE_DB_URL_MIGRATOR` | Pipeline autorizado do derivado: conexão de migration como `postgres` (ADR 0016) | **Sim** |
 | `SUPABASE_ACCESS_TOKEN` | CI: `supabase config push` | **Sim** |
 | `EXPO_TOKEN` | CI: token de robô do EAS | **Sim** |
 
@@ -44,10 +45,11 @@ Observações:
 - Variáveis `EXPO_PUBLIC_*` vão para o bundle do app e **nunca** guardam segredo. Extensões
   declaram as próprias em `MobileExtension.publicEnv` (só `EXPO_PUBLIC_*`) e `SiteExtension.publicEnv`
   (só `NEXT_PUBLIC_*`); o núcleo recusa outro prefixo e nomes com `SECRET`, `KEY_PRIVATE` ou `TOKEN`.
-- `ALERT_RESEND_API_KEY` e `ALERT_TO` (alertas do banco, ADR 0008) ficam no **Supabase Vault**, não
-  em variável de ambiente.
+- Alertas do banco são persistidos em `ops.alerts`; o template não pede credenciais
+  de envio nem as guarda no Vault/pg_net (ADRs 0008/0016).
 - A secret key do Supabase **não existe** no runtime da API (ADR 0004).
-- Segredos de CI ficam em GitHub Environments com aprovação; os da API ficam na Vercel por
-  ambiente, os de produção como Sensitive e só em Production (ADR 0012).
+- Gates rodam localmente ou na KVM (ADR 0015), sem GitHub Actions. Credenciais de
+  operação ficam no ambiente/gerenciador do operador. No derivado hospedado na
+  Vercel, segredos da API são separados por ambiente; os de produção são Sensitive.
 - Extensões declaram as próprias variáveis (`ServerExtension.env`), validadas no boot junto
   com as do núcleo.

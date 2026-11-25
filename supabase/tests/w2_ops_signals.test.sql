@@ -40,6 +40,16 @@ values ('operator', '11111111-1111-4111-8111-111111111111', 'app_config.updated'
 select lives_ok('select ops.check_signals()',
   'check_signals persists the configured maintenance alerts');
 select set_eq(
+  $$
+    select attribute.attname
+    from pg_catalog.pg_attribute attribute
+    where attribute.attrelid = 'ops.alerts'::regclass
+      and attribute.attnum > 0 and not attribute.attisdropped
+  $$,
+  $$ values ('code'::text), ('value'::text), ('first_seen_at'::text), ('last_seen_at'::text) $$,
+  'ops.alerts stores only the approved local signal fields'
+);
+select set_eq(
   $$ select code from ops.alerts $$,
   $$
     values ('cron_failures_24h'::text), ('purge_expired_missing'::text),
@@ -61,23 +71,17 @@ select is((select value from ops.alerts where code = 'audit_webhook_volume'), 20
 select is((select value from ops.alerts where code = 'operator_config_unlisted'), 1::numeric,
   'an unexempt operator setting change raises an alert while an exempt key does not');
 select ok(
-  not exists (
-    select 1 from ops.alerts
-    where last_sent_at is not null or request_id is not null
-  ),
-  'missing Vault credentials persist alerts without marking or sending them'
+  (select bool_and(first_seen_at = last_seen_at)
+   from ops.alerts),
+  'new alerts persist local first-seen and last-seen timestamps only'
 );
 
-update ops.alerts
-set last_sent_at = now() - interval '1 hour', request_id = 987654321
-where code in (
-  'cron_failures_24h', 'purge_expired_missing', 'audit_operator_volume',
-  'audit_system_volume', 'audit_webhook_volume', 'operator_config_unlisted'
-);
-select set_config('test.alert_dedupe_at',
-  (select min(last_sent_at)::text from ops.alerts), true);
+select set_config('test.alert_first_seen_at',
+  (select min(first_seen_at)::text from ops.alerts), true);
+select set_config('test.alert_last_seen_at',
+  (select max(last_seen_at)::text from ops.alerts), true);
 select lives_ok('select ops.check_signals()',
-  'check_signals can re-evaluate alerts inside the six-hour dedupe interval');
+  'check_signals can re-evaluate persisted alerts without an external notifier');
 select is(
   (select count(*)::integer from ops.alerts
    where code in (
@@ -88,14 +92,16 @@ select is(
   'repeated signal checks keep one row per alert code'
 );
 select ok(
-  (select bool_and(last_sent_at = current_setting('test.alert_dedupe_at', true)::timestamptz
-                   and request_id = 987654321)
+  (select bool_and(
+      first_seen_at = current_setting('test.alert_first_seen_at', true)::timestamptz
+      and last_seen_at >= current_setting('test.alert_last_seen_at', true)::timestamptz
+    )
    from ops.alerts
    where code in (
      'cron_failures_24h', 'purge_expired_missing', 'audit_operator_volume',
      'audit_system_volume', 'audit_webhook_volume', 'operator_config_unlisted'
    )),
-  'a recent last_sent_at suppresses repeat delivery without network calls'
+  'repeated signals preserve first-seen and refresh last-seen timestamps'
 );
 
 select * from finish();

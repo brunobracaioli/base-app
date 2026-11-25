@@ -622,9 +622,8 @@ Regras:
   elas: (1) `grant <papel-grupo do núcleo> to <ext>_system`, com o papel-grupo entre
   `audit_writer`, `audit_operator_writer`, `audit_reader` e `app_config_writer`; (2) `insert` em
   tabela de dados declarada extensível (hoje `app_config.operator_alert_exempt_keys`); (3) FK da
-  tabela 1:1 da extensão para `auth.users(id)`; (4) `alter function <ext_schema>.<fn> owner to
-  auth_fn_owner`, só para função `SECURITY DEFINER` com `search_path = ''` declarada em
-  `auth-fn-registry.d`; (5) `grant <papel-grupo do núcleo> to <ext_schema>_*`, para papéis
+  tabela 1:1 da extensão para `auth.users(id)`; (4) nenhuma extensão pode criar função
+  `SECURITY DEFINER` que toque em `auth` ou transferi-la para `postgres`; (5) `grant <papel-grupo do núcleo> to <ext_schema>_*`, para papéis
   auxiliares cujo nome comece por `<ext_schema>_` (declarados em `expected-group-members.d`). Tudo o mais fica no schema próprio da extensão.
   Para o lint não ser contornado pelo nome, o CI da derivada exige que toda migration que não
   exista no `upstream` tenha o prefixo `_ext-` (o `lint` compara a lista com a do `upstream/main`).
@@ -835,24 +834,19 @@ usuário.
   schema e as exceções de auditoria já definidas em account-lifecycle-and-privacy §4.1
   (`usage`/`insert` em `audit.events`; `privacy_system` também lê para exportação),
   listados na migration de papéis. Papéis fora do runtime: `ops` (dono das funções de
-  expurgo e pseudonimização, chamado só pelo `pg_cron` e por elas), `auth_fn_owner` (NOLOGIN,
-  dono das funções `SECURITY DEFINER` que tocam `auth.*`; nunca `postgres`). O conjunto de
-  grants de `auth_fn_owner` em `auth` é **fixo e listado** (nada além): `auth.users`: `select`,
-  `delete` e `update (banned_until, encrypted_password, raw_app_meta_data)`; `auth.sessions`, `auth.refresh_tokens`
-  e `auth.identities`: `select` e `delete`; `auth.audit_log_entries` e `auth.flow_state`:
-  `delete`. O pgTAP compara os grants reais com esta lista e falha em qualquer diferença.
-  `raw_app_meta_data` existe para funções que concedem ou revogam papéis em `app_metadata.roles`
-  (ex.: administrador de uma versão derivada); uma função assim altera só a chave `roles`, com
-  `jsonb_set`, e isso é conferido na revisão da função registrada em `auth-fn-registry.d`.
-  Uma extensão pode criar, no **próprio schema**, uma função `SECURITY DEFINER` com `set
-  search_path = ''` e transferi-la com `alter function <ext_schema>.<fn> owner to
-  auth_fn_owner` (exceção explícita do `db:lint-migrations`); cada uma é declarada em
-  `supabase/tests/auth-fn-registry.d/<ext>.json` (nome, assinatura e motivo) e o pgTAP compara as
-  funções reais de `auth_fn_owner` com o núcleo mais os `.d`, falhando em função não declarada;
-  o `execute` é só do `<ext>_system` dono do caso de uso. Papéis auxiliares de uma extensão
-  (ex.: `admin_grantor`, `credits_admin`) devem começar por `<ext_schema>_`; `app_config_admin` (dono de
+  expurgo e pseudonimização, chamado só pelo `pg_cron` e por elas), `app_config_admin` (dono de
   `app_config.set_setting` e do script de configuração; membro de `audit_writer` e `audit_operator_writer`) e `migrator`
-  (DDL, só no CI). Handlers de eventos que rodam na transação de outro
+  (DDL, só no CI). Nenhum papel customizado recebe `USAGE` nem grants em `auth`. As funções
+  privilegiadas da fronteira Auth W2 são `identity.before_user_created(jsonb)` (hook owner
+  `postgres`, caller `supabase_auth_admin`) e `identity.count_unconfirmed_users()`/
+  `identity.delete_unconfirmed_users()` (helpers Auth owner `postgres`, callers `ops`); o registro fechado
+  `supabase/tests/core-auth-fn-registry.json` verifica assinatura, migration, owner e callers.
+  Todas são pequenas funções `SECURITY DEFINER`, com `search_path = ''` e SQL fixo. A
+  autoridade de `postgres` é um risco residual aceito (ADR 0016), mitigado por esse registry,
+  revisão da migration e testes negativos de execução. Extensões não podem registrar funções
+  que toquem `auth`; funções de privacidade ou limpeza de senha entram no registry fechado
+  somente quando as ondas correspondentes as autorizarem, com revisão de ameaça e testes, sem
+  autorização antecipada aqui. Handlers de eventos que rodam na transação de outro
   contexto trocam para o papel do próprio contexto (`set_config('role', ..., true)`) e voltam
   ao terminar.
 - Papéis-grupo (NOLOGIN, sem membros de extensão no base-app; `app_config_admin` é membro
@@ -891,15 +885,21 @@ usuário.
   HMAC hexadecimal; `resource_ref` sem UUID; `metadata` ≤ 4 KB); só `recordAuditEvent` grava.
 - Exclusão do usuário no Auth e leitura do e-mail para o aviso final por funções
   `SECURITY DEFINER` (`privacy.delete_auth_user`, `privacy.lookup_email_for_purge`)
-  executáveis só por `privacy_system`, donas de `auth_fn_owner`, e que só operam sobre o
+  executáveis só por `privacy_system`, com owner `postgres` quando a onda de privacidade as
+  implementar, após adicioná-las ao registry fechado e cobri-las por revisão de ameaça e testes;
+  não são autorizadas pelo registry W2. Elas só operam sobre o
   usuário em purga: o caso de uso define `app.purge_user_id` com `set_config(..., true)` e as
   funções recusam outro `uuid`. Isso reduz erro de código; não impede injeção de SQL (R11).
   A chave secreta do Supabase não fica no runtime da API (spike S-PR-1).
-- Teste de catálogo (pgTAP): toda tabela fora dos schemas de sistema (`auth`, `storage`,
-  `realtime`, `vault`, `cron`, `net`, `extensions`, `supabase_*`, `pg_*`) tem RLS habilitado e
-  forçado, nenhum grant para `anon` ou `public` e grants de `authenticated` só os listados em
-  `supabase/tests/grants-allowlist.json`. Tabela nova sem declaração falha o teste.
-  `anon` e `authenticated` não têm privilégio nos schemas `storage` e `realtime`.
+- Teste de catálogo (pgTAP): toda tabela nos schemas da aplicação (`identity`, `privacy`,
+  `app_config`, `platform`, `audit`, `ops`) tem RLS habilitado e forçado, nenhum grant para
+  `anon` ou `public` e grants de `authenticated` só os listados em
+  `supabase/tests/grants-allowlist.json`. Tabela nova sem declaração falha o teste. Os grants
+  gerenciados pelo provedor em `auth`, Storage e Realtime não são tratados como ACLs que uma
+  migration `postgres` possa revogar. A configuração mantém Data API, Storage e Realtime
+  desligados; se a CLI materializar objetos Storage/Realtime, os testes tentam acesso e escrita
+  como `anon`/`authenticated` usando fixtures rollbackáveis e registram se a negativa vem de
+  RLS ou de ACL. Configuração desligada sozinha não é descrita como uma prova de RLS.
 - Tipos TypeScript das tabelas gerados por `kysely-codegen` contra o banco local; o CI falha se
   o arquivo gerado divergir do commitado.
 
@@ -1198,8 +1198,9 @@ Regras: testes determinísticos (relógio e gerador de ID injetados), sem rede e
       prefixo dela; `%2f` e `%5c` são rejeitados pelo Proxy.
 - [ ] `publicEnv`: chave sem o prefixo (`EXPO_PUBLIC_` ou `NEXT_PUBLIC_`) ou com `SECRET`,
       `KEY_PRIVATE` ou `TOKEN` falha; site key de CAPTCHA passa; chave repetida falha.
-- [ ] `auth_fn_owner` tem exatamente os grants fixos de §3.8 (pgTAP); função de extensão
-      transferida a ele sem registro em `auth-fn-registry.d` falha; papel auxiliar sem o prefixo
+- [ ] Não existe papel/grant customizado em `auth`; os três helpers Auth W2 têm owner/caller/
+      migration exatos no registry fechado, e qualquer função de extensão que toque `auth` falha;
+      papel auxiliar sem o prefixo
       `<ext_schema>_` falha.
 - [ ] `maintenance: 'exempt'` em rota que não é webhook nem tem política `operator: true` falha no
       boot e no teste estático, que lista as rotas isentas.

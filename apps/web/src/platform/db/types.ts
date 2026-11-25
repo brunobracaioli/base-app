@@ -9,8 +9,6 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
-export type Int8 = ColumnType<string, bigint | number | string, bigint | number | string>;
-
 export type Json = JsonValue;
 
 export type JsonArray = JsonValue[];
@@ -49,13 +47,15 @@ export interface AuditEvents {
   subject_ref: string | null;
 }
 
+export interface IdentitySignupReservations {
+  reservation_id: Generated<string>;
+  reserved_at: Generated<string>;
+}
+
 export interface OpsAlerts {
   code: string;
   first_seen_at: Generated<string>;
   last_seen_at: Generated<string>;
-  last_sent_at: string | null;
-  request_id: Int8 | null;
-  request_queued_at: string | null;
   value: Numeric;
 }
 
@@ -75,6 +75,7 @@ export interface DB {
   "app_config.operator_alert_exempt_keys": AppConfigOperatorAlertExemptKeys;
   "app_config.settings": AppConfigSettings;
   "audit.events": AuditEvents;
+  "identity.signup_reservations": IdentitySignupReservations;
   "ops.alerts": OpsAlerts;
   "platform.idempotency_keys": PlatformIdempotencyKeys;
 }

@@ -1,14 +1,63 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  lintCoreAuthFunctionMigrations,
   lintExtensionMigration,
+  lintExtensionMigrations,
   MigrationLintError,
-  parseAuthFunctionRegistryDocuments,
+  parseCoreAuthFunctionRegistry,
   parseExpectedGroupMemberDocuments,
   resolveDerivedRepositoryMode,
   validateDerivedMigrationNames,
 } from './db-lint-migrations.js';
 
 const migrationName = '20261124120000_ext-x_guard.sql';
+const coreAuthMigrationName = '20261125120000_core_auth_helpers.sql';
+
+const coreAuthFunctions = [
+  {
+    schema: 'identity',
+    name: 'before_user_created',
+    signature: '(jsonb)',
+    migration: coreAuthMigrationName,
+    owner: 'postgres',
+    executeCallers: ['supabase_auth_admin'],
+    purpose: 'Enforces the fixed signup ceiling before Auth creates a user.',
+  },
+  {
+    schema: 'identity',
+    name: 'count_unconfirmed_users',
+    signature: '()',
+    migration: coreAuthMigrationName,
+    owner: 'postgres',
+    executeCallers: ['ops'],
+    purpose: 'Returns only the bounded unconfirmed-account count to maintenance.',
+  },
+  {
+    schema: 'identity',
+    name: 'delete_unconfirmed_users',
+    signature: '()',
+    migration: coreAuthMigrationName,
+    owner: 'postgres',
+    executeCallers: ['ops'],
+    purpose: 'Deletes only the fixed-age bounded batch of unconfirmed accounts.',
+  },
+] as const;
+
+const coreAuthMigration = `
+  CREATE OR REPLACE FUNCTION identity.before_user_created(p_event jsonb) RETURNS jsonb
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN p_event; END; $$;
+  ALTER FUNCTION identity.before_user_created(jsonb) OWNER TO postgres;
+  CREATE OR REPLACE FUNCTION identity.count_unconfirmed_users() RETURNS bigint
+  LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $$ SELECT 0::bigint; $$;
+  ALTER FUNCTION identity.count_unconfirmed_users() OWNER TO postgres;
+  CREATE OR REPLACE FUNCTION identity.delete_unconfirmed_users() RETURNS integer
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN 0; END; $$;
+  ALTER FUNCTION identity.delete_unconfirmed_users() OWNER TO postgres;
+`;
 
 function lint(contents: string, options: Parameters<typeof lintExtensionMigration>[1] = {}) {
   return lintExtensionMigration({ name: migrationName, contents }, options);
@@ -59,6 +108,14 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     const result = await lint('GRANT audit_writer TO x_system;');
     expect(result.issues).toEqual([]);
   });
+
+  it.each(['GRANT x_system TO postgres;', 'GRANT audit_writer TO postgres;'])(
+    'rejects extension role grants that try to assume postgres: %s',
+    async (sql) => {
+      const result = await lint(sql);
+      expect(result.issues.some((issue) => issue.code === 'core-role-grant')).toBe(true);
+    },
+  );
 
   it('requires an expected-group-members declaration for auxiliary role grants', async () => {
     const sql = 'GRANT audit_writer TO x_admin_grantor;';
@@ -160,73 +217,47 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(result.issues[0]?.code).toBe('foreign-key-target');
   });
 
-  it('requires security definer, an empty search path and registry metadata for auth_fn_owner transfer', async () => {
+  it('keeps extension definers with their extension system role and rejects core owner transfers', async () => {
     const sql = `
       CREATE OR REPLACE FUNCTION x.grant_role() RETURNS void
       LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
       AS $$ BEGIN RETURN; END; $$;
-      ALTER FUNCTION x.grant_role() OWNER TO auth_fn_owner;
+      ALTER FUNCTION x.grant_role() OWNER TO x_system;
     `;
-    const registration = [
-      { name: 'x.grant_role', signature: '()', reason: 'Maintains extension roles.' },
-    ];
+    expect((await lint(sql)).issues).toEqual([]);
 
-    const missingRegistry = await lint(sql);
-    expect(
-      missingRegistry.issues.some(
-        (issue) =>
-          issue.code === 'unregistered-security-definer' || issue.code === 'auth-function-owner',
-      ),
-    ).toBe(true);
-
-    const valid = await lint(sql, { registeredFunctions: registration });
-    expect(valid.issues).toEqual([]);
-
-    const definitionOnly = sql.replace('ALTER FUNCTION x.grant_role() OWNER TO auth_fn_owner;', '');
-    const missingTransfer = await lint(definitionOnly, { registeredFunctions: registration });
+    const definitionOnly = sql.replace('ALTER FUNCTION x.grant_role() OWNER TO x_system;', '');
+    const missingTransfer = await lint(definitionOnly);
     expect(missingTransfer.issues.some((issue) => issue.code === 'function-owner-transfer')).toBe(
       true,
     );
 
-    const extensionOwner = sql.replace('OWNER TO auth_fn_owner', 'OWNER TO x_system');
-    const unsafeOwner = await lint(extensionOwner, { registeredFunctions: registration });
-    expect(unsafeOwner.issues.some((issue) => issue.code === 'extension-function-owner')).toBe(
-      true,
-    );
+    for (const owner of ['auth_fn_owner', 'postgres']) {
+      const unsafeOwner = await lint(sql.replace('OWNER TO x_system', `OWNER TO ${owner}`));
+      expect(unsafeOwner.issues).not.toEqual([]);
+    }
   });
 
-  it('uses the extension system role for unregistered own-schema security definers', async () => {
+  it('rejects a legacy extension auth-function registration path', async () => {
     const sql = `
       CREATE OR REPLACE FUNCTION x.local_helper() RETURNS void
       LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
       AS $$ BEGIN RETURN; END; $$;
-      ALTER FUNCTION x.local_helper() OWNER TO x_system;
+      ALTER FUNCTION x.local_helper() OWNER TO auth_fn_owner;
     `;
-    expect((await lint(sql)).issues).toEqual([]);
-    expect(
-      (await lint(sql.replace('OWNER TO x_system', 'OWNER TO auth_fn_owner'))).issues.some(
-        (issue) => issue.code === 'auth-function-owner',
-      ),
-    ).toBe(true);
+    const result = await lint(sql);
+    expect(result.issues).not.toEqual([]);
   });
 
-  it('rejects an auth_fn_owner function with a non-empty search path', async () => {
+  it('rejects an extension definer with a non-empty search path', async () => {
     const sql = `
       CREATE OR REPLACE FUNCTION x.grant_role() RETURNS void
       LANGUAGE plpgsql SECURITY DEFINER SET search_path = x
       AS $$ BEGIN RETURN; END; $$;
-      ALTER FUNCTION x.grant_role() OWNER TO auth_fn_owner;
+      ALTER FUNCTION x.grant_role() OWNER TO x_system;
     `;
-    const result = await lint(sql, {
-      registeredFunctions: [
-        { name: 'x.grant_role', signature: '()', reason: 'Maintains extension roles.' },
-      ],
-    });
-    expect(
-      result.issues.some(
-        (issue) => issue.code === 'function-search-path' || issue.code === 'auth-function-owner',
-      ),
-    ).toBe(true);
+    const result = await lint(sql);
+    expect(result.issues.some((issue) => issue.code === 'function-search-path')).toBe(true);
   });
 
   it('rejects ALTER DEFAULT PRIVILEGES and DDL that tries to move an extension object into a core schema', async () => {
@@ -325,49 +356,224 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     ).toThrow(/upstream\/main/);
   });
 
-  it('parses strict, extension-scoped auth-function and group-members registries', () => {
-    const functions = parseAuthFunctionRegistryDocuments([
-      {
-        filename: 'supabase/tests/auth-fn-registry.d/x.json',
-        extensionSchema: 'x',
-        document: {
-          functions: [
-            { name: 'grant_role', signature: '()', reason: 'Updates allowed extension roles.' },
-          ],
-        },
-      },
-    ]);
-    expect(functions).toEqual([
-      { name: 'x.grant_role', signature: '()', reason: 'Updates allowed extension roles.' },
-    ]);
+  it('parses the closed core Auth-definer registry and rejects extension or caller expansion', () => {
+    expect(parseCoreAuthFunctionRegistry({ functions: coreAuthFunctions })).toEqual(
+      coreAuthFunctions,
+    );
     expect(() =>
-      parseAuthFunctionRegistryDocuments([
-        {
-          filename: 'supabase/tests/auth-fn-registry.d/x.json',
-          extensionSchema: 'x',
-          document: {
-            functions: [
-              { name: 'grant_role', signature: '()', reason: 'ok', arbitrary: 'ignored' },
-            ],
+      parseCoreAuthFunctionRegistry({
+        functions: [
+          ...coreAuthFunctions,
+          {
+            schema: 'x',
+            name: 'grant_role',
+            signature: '()',
+            migration: coreAuthMigrationName,
+            owner: 'postgres',
+            executeCallers: ['x_system'],
+            purpose: 'Extension grant helper.',
           },
-        },
-      ]),
+        ],
+      }),
     ).toThrow(MigrationLintError);
     expect(() =>
-      parseAuthFunctionRegistryDocuments([
-        {
-          filename: 'supabase/tests/auth-fn-registry.d/x.json',
-          extensionSchema: 'x',
-          document: {
-            functions: [
-              { name: 'grant_role', signature: '()', reason: 'first' },
-              { name: 'grant_role', signature: '()', reason: 'duplicate' },
-            ],
-          },
-        },
-      ]),
-    ).toThrow(/Duplicate auth function registry entry/);
+      parseCoreAuthFunctionRegistry({
+        functions: coreAuthFunctions.map((entry) =>
+          entry.name === 'before_user_created'
+            ? { ...entry, executeCallers: ['supabase_auth_admin', 'authenticated'] }
+            : entry,
+        ),
+      }),
+    ).toThrow(MigrationLintError);
+    expect(() =>
+      parseCoreAuthFunctionRegistry({
+        functions: coreAuthFunctions.map((entry) => ({ ...entry, extra: 'not permitted' })),
+      }),
+    ).toThrow(MigrationLintError);
+    expect(() => parseCoreAuthFunctionRegistry({ functions: coreAuthFunctions.slice(1) })).toThrow(
+      MigrationLintError,
+    );
+    expect(() =>
+      parseCoreAuthFunctionRegistry({
+        functions: coreAuthFunctions.map((entry) => ({
+          ...entry,
+          migration: '20261125120000_ext-x_core_auth.sql',
+        })),
+      }),
+    ).toThrow(MigrationLintError);
+    expect(() =>
+      parseCoreAuthFunctionRegistry({
+        functions: [coreAuthFunctions[0], coreAuthFunctions[0], ...coreAuthFunctions.slice(1)],
+      }),
+    ).toThrow(/Duplicate core Auth-function registry entry/);
+  });
 
+  it('binds each core Auth definer to its same migration, owner, SECURITY DEFINER, and empty path', async () => {
+    const registrations = parseCoreAuthFunctionRegistry({ functions: coreAuthFunctions });
+    expect(
+      await lintCoreAuthFunctionMigrations(
+        [{ name: coreAuthMigrationName, contents: coreAuthMigration }],
+        registrations,
+      ),
+    ).toEqual([]);
+
+    const unregisteredTransfer = `
+      CREATE FUNCTION identity.unregistered() RETURNS integer
+      LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $$ SELECT 1 $$;
+      ALTER FUNCTION identity.unregistered() OWNER TO postgres;
+      ALTER FUNCTION unqualified_helper() OWNER TO postgres;
+    `;
+    expect(
+      (
+        await lintCoreAuthFunctionMigrations(
+          [{ name: coreAuthMigrationName, contents: unregisteredTransfer }],
+          registrations,
+        )
+      ).some((issue) => issue.code === 'unregistered-postgres-function-owner'),
+    ).toBe(true);
+
+    const migrationOwnedFunctions = coreAuthMigration.replace(
+      /\s*ALTER FUNCTION identity\.[a-z_]+\([^)]*\) OWNER TO postgres;/g,
+      '',
+    );
+    expect(
+      (
+        await lintCoreAuthFunctionMigrations(
+          [{ name: coreAuthMigrationName, contents: migrationOwnedFunctions }],
+          registrations,
+        )
+      ).some((issue) => issue.code === 'core-auth-function-owner'),
+    ).toBe(false);
+
+    const wrongOwner = coreAuthMigration.replace(
+      'ALTER FUNCTION identity.count_unconfirmed_users() OWNER TO postgres;',
+      'ALTER FUNCTION identity.count_unconfirmed_users() OWNER TO identity_system;',
+    );
+    expect(
+      (
+        await lintCoreAuthFunctionMigrations(
+          [{ name: coreAuthMigrationName, contents: wrongOwner }],
+          registrations,
+        )
+      ).some((issue) => issue.code === 'core-auth-function-owner'),
+    ).toBe(true);
+
+    expect(
+      (
+        await lintCoreAuthFunctionMigrations(
+          [{ name: '20261125120001_other.sql', contents: coreAuthMigration }],
+          registrations,
+        )
+      ).some((issue) => issue.code === 'core-auth-function-migration'),
+    ).toBe(true);
+
+    const unsafePath = coreAuthMigration.replace(
+      "SET search_path = ''",
+      'SET search_path = public',
+    );
+    expect(
+      (
+        await lintCoreAuthFunctionMigrations(
+          [{ name: coreAuthMigrationName, contents: unsafePath }],
+          registrations,
+        )
+      ).some((issue) => issue.code === 'function-search-path'),
+    ).toBe(true);
+  });
+
+  it('rejects a registered core Auth owner transfer with a different signature or caller context', async () => {
+    const registrations = parseCoreAuthFunctionRegistry({ functions: coreAuthFunctions });
+    const wrongSignature = coreAuthMigration.replace(
+      'identity.before_user_created(jsonb)',
+      'identity.before_user_created(text)',
+    );
+    expect(
+      (
+        await lintCoreAuthFunctionMigrations(
+          [{ name: coreAuthMigrationName, contents: wrongSignature }],
+          registrations,
+        )
+      ).some((issue) => issue.code === 'unregistered-postgres-function-owner'),
+    ).toBe(true);
+  });
+
+  it('rejects the removed owner role and unregistered SECURITY DEFINER functions left owned by the migration role', async () => {
+    const registrations = parseCoreAuthFunctionRegistry({ functions: coreAuthFunctions });
+    const legacyOwner = await lintCoreAuthFunctionMigrations(
+      [
+        {
+          name: coreAuthMigrationName,
+          contents: 'CREATE ROLE auth_fn_owner NOLOGIN;',
+        },
+      ],
+      registrations,
+    );
+    expect(legacyOwner.some((issue) => issue.code === 'legacy-auth-owner')).toBe(true);
+
+    const defaultOwner = await lintCoreAuthFunctionMigrations(
+      [
+        {
+          name: coreAuthMigrationName,
+          contents: `
+            CREATE FUNCTION ops.unregistered_helper() RETURNS integer
+            LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $$ SELECT 1 $$;
+          `,
+        },
+      ],
+      registrations,
+    );
+    expect(
+      defaultOwner.some((issue) => issue.code === 'unregistered-postgres-function-owner'),
+    ).toBe(true);
+  });
+
+  it('runs the fixed core registry against core migrations and still rejects extension ownership escalation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'base-app-migration-lint-'));
+    const migrationDirectory = join(root, 'supabase', 'migrations');
+    const testDirectory = join(root, 'supabase', 'tests');
+    mkdirSync(migrationDirectory, { recursive: true });
+    mkdirSync(testDirectory, { recursive: true });
+    execFileSync('git', ['init', '--quiet'], { cwd: root });
+    writeFileSync(
+      join(testDirectory, 'core-auth-fn-registry.json'),
+      JSON.stringify({ functions: coreAuthFunctions }),
+      'utf8',
+    );
+    writeFileSync(join(migrationDirectory, coreAuthMigrationName), coreAuthMigration, 'utf8');
+    writeFileSync(
+      join(migrationDirectory, '20261125120001_ext-x_owner.sql'),
+      `
+        CREATE FUNCTION x.helper() RETURNS void
+        LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN; END; $$;
+        ALTER FUNCTION x.helper() OWNER TO postgres;
+      `,
+      'utf8',
+    );
+
+    try {
+      const result = await lintExtensionMigrations(root);
+      expect(result.checked).toBe(1);
+      expect(result.coreChecked).toBe(1);
+      expect(
+        result.issues.some(
+          (entry) =>
+            entry.migration === '20261125120001_ext-x_owner.sql' &&
+            entry.issue.code === 'extension-function-owner',
+        ),
+      ).toBe(true);
+
+      const legacyRegistryDirectory = join(testDirectory, 'auth-fn-registry.d');
+      mkdirSync(legacyRegistryDirectory);
+      writeFileSync(join(legacyRegistryDirectory, 'x.json'), '{}', 'utf8');
+      await expect(lintExtensionMigrations(root)).rejects.toThrow(
+        /auth-fn-registry.d is no longer supported/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('parses strict extension group-members registries', () => {
     const groups = parseExpectedGroupMemberDocuments([
       {
         filename: 'supabase/tests/expected-group-members.d/x.json',

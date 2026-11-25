@@ -5,6 +5,7 @@ const auditInsert = /\binsert\s+into\s+"?audit"?\s*\.\s*"?events"?\b/i;
 const approvedSignatures = new Map([
   ['app_config.set_setting', 'text,jsonb,text,text,text,timestamptz'],
   ['ops.purge_expired', ''],
+  ['ops.purge_unconfirmed_users', ''],
 ]);
 
 function object(value: unknown): ObjectNode {
