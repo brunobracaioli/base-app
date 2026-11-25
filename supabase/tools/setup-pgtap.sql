@@ -13,8 +13,7 @@ end;
 $$;
 create or replace function test_support.private_storage_fixture_count()
 returns integer
-language plpgsql
-set search_path = ''
+language plpgsql set search_path = ''
 as $$
 declare
   v_count integer;
@@ -41,8 +40,7 @@ $$;
 
 create or replace function test_support.private_realtime_fixture_count()
 returns integer
-language plpgsql
-set search_path = ''
+language plpgsql set search_path = ''
 as $$
 declare
   v_count integer;
@@ -69,8 +67,7 @@ $$;
 
 create or replace function test_support.private_storage_fixture_insert_denied()
 returns boolean
-language plpgsql
-set search_path = ''
+language plpgsql set search_path = ''
 as $$
 begin
   begin
@@ -101,8 +98,7 @@ $$;
 
 create or replace function test_support.private_realtime_fixture_insert_denied()
 returns boolean
-language plpgsql
-set search_path = ''
+language plpgsql set search_path = ''
 as $$
 begin
   begin
