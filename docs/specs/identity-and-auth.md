@@ -481,6 +481,13 @@ create table identity.signup_reservations (
   reservation_id uuid primary key default gen_random_uuid(),
   reserved_at timestamptz not null default clock_timestamp()
 );
+alter table identity.signup_reservations enable row level security;
+alter table identity.signup_reservations force row level security;
+revoke all on identity.signup_reservations
+  from public, anon, authenticated, service_role, api_runtime, ops;
+create policy signup_reservations_postgres_all
+  on identity.signup_reservations for all to postgres
+  using (true) with check (true);
 
 -- identity.before_user_created(event) validates the event/user object, but
 -- accepts an anonymous user with no email. It deletes expired reservations,
