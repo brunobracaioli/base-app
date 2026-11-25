@@ -65,46 +65,28 @@ próprios. Nenhum container de outros projetos é parado; nenhum `.env` do
 operador é enviado. Serviços de teste ficam em loopback/rede interna, com
 credenciais efêmeras geradas pelas ferramentas e saída sanitizada.
 
-S-TM-4 distingue CLI/config local de aplicação num projeto Supabase hospedado;
-sem projeto autorizado, a prova hospedada fica pendente. Builds EAS e aceitação
-nativa dependem de contas/configuração reais. Essas ausências são registradas,
-e a onda correspondente não é marcada completa sem seus critérios obrigatórios.
+S-TM-4 documenta a capacidade da CLI/config local; aplicar e conferir configuração
+em projeto hospedado pertence ao checklist do derivado. Builds EAS assinados e
+aceitação nativa do produto dependem de contas/configuração reais. Esses passos
+não são simulados nem substituem as provas locais obrigatórias (base-app §2).
 
 GitHub Actions permanece desativado. Nenhum deploy, compra, publicação em loja,
 provisionamento ou migration de produção faz parte deste grupo.
 
-## Propostas pendentes de decisão do dono
+## Decisões aprovadas em 2026-11-25
 
-Estas propostas não alteram os contratos vigentes nem autorizam grants.
-
-- **Sessão anterior (mobile-app-shell §3.8):** preservar o retorno genérico
-  de `withPreviousSession<T>` para dados inspecionáveis, inclusive `undefined`;
-  recusar funções, getters, instâncias opacas e ciclos. O token é recusado em
-  qualquer chave/valor e erros são sanitizados, com limpeza em `finally`.
-- **Requisição anterior ao Proxy (ADR 0003):** decidir entre documentar a
-  normalização/308 sem headers observada no Next e exigir um ingress anterior
-  que cumpra o 404 exato. Host e prefixos continuam sendo conferidos no path
-  entregue ao Proxy; isso não prova que a forma original foi rejeitada.
-- **Permissões internas de auditoria (app-config §4, privacidade §4.1 e
-  ADR 0008):** a função `set_setting`, dona `app_config_admin`, precisa contar
-  eventos para impor 20 alterações/hora, mas não tem SELECT; a purga, dona
-  `auth_fn_owner`, precisa gravar sua contagem, mas não tem INSERT. Proposta:
-  duas funções privadas `SECURITY DEFINER`, donas de `ops`, com
-  `search_path = ''`: uma sem parâmetros que devolve somente a contagem de
-  `app_config.updated` na última hora, executável apenas por `app_config_admin`;
-  outra recebe apenas a contagem não negativa da purga e grava um evento fixo
-  `ops.purge_unconfirmed_users`, executável apenas por `auth_fn_owner`.
-  Revogar EXECUTE de PUBLIC e dar aos chamadores somente USAGE no schema e
-  EXECUTE na respectiva função; nenhum acesso direto adicional à tabela.
-  pgTAP deve provar dono/search_path, grants exatos, negativas dos demais
-  papéis e que os argumentos não permitem escolher evento, ator ou usuário.
-  Alternativa a decidir: grants de tabela/coluna e políticas RLS estreitas.
-- **Sinais ainda sem implementação verificável na onda 2:** a contagem de
-  contas não confirmadas exige acesso a `auth.users`; não foi concedido SELECT
-  a `ops`, pois funções definidoras que acessam `auth` devem pertencer a
-  `auth_fn_owner`. Um contador privado desse dono, executável por `ops`, é uma
-  proposta adicional, ainda sem aprovação. Os alertas de 70%/90% de envio de
-  e-mail também dependem do mapeamento real de eventos do Auth (S-AU-4,
-  atualmente planejado na onda 6). Nenhum evento ou resultado de envio foi
-  inventado para satisfazer esses critérios; o plano precisa resolver essa
-  dependência antes de concluir a onda 2.
+- **Sessão anterior:** manter o retorno genérico para dados simples inspecionáveis,
+  inclusive `undefined`; recusar funções, getters, classes, ciclos e conteúdo com
+  o token anterior. Limpar a sessão capturada em `finally`, sem encerrar a nova
+  sessão primária. As assinaturas de entrada de base-app §3.4.2 permanecem vigentes.
+- **HTTP anterior ao Proxy:** documentar a normalização e o 308 sem headers do app
+  observados no Next. Host e prefixos continuam sendo conferidos no destino final;
+  o checker TCP valida os redirecionamentos e o isolamento, sem prometer acesso
+  à forma original que o framework descartou.
+- **Baseline do Supabase:** aplicar o ADR 0016, com funções Auth restritas
+  pertencentes a `postgres`, helpers mínimos de auditoria, reserva atômica do
+  teto de cadastro e alertas persistidos sem `pg_net`. O dono autorizou consolidar
+  as migrations experimentais ainda não publicadas e atualizar pontualmente a
+  regra correspondente do AGENTS.md e as specs. Isso não autoriza alterar bancos
+  existentes. Os testes de permissões continuam obrigatórios e executam as
+  migrations com o papel normal `postgres`, sem superusuário para mascarar falhas.

@@ -200,7 +200,9 @@ merge de uma por vez.
     muda.
   - `EdgeExtension.headers`: nome ou valor fora da allowlist faz o boot e o teste falharem; o
     header vale sob o prefixo e em qualquer host que o sirva; o `matcher` cobre `/_next/**`;
-    tabela de bypass de caminho (`//`, `%2e%2e`, `%2f`, caixa, `\`) → 404; `pathPrefix: '/'` com
+    tabela de caminhos comprova 404 quando o Proxy recebe a forma proibida e isolamento de
+    host/prefixo após normalização. Redirecionamentos 308 anteriores ao Proxy podem vir sem
+    headers do app (ADR 0003); o teste TCP confere Location e destino final. `pathPrefix: '/'` com
     CSP e prefixo de `/account-deletion` com `img-src` ou `style-src` reprovam.
   - `publicEnv` de `SiteExtension`: prefixo errado, `SECRET`, `KEY_PRIVATE`, `TOKEN` e chave
     repetida falham; site key de CAPTCHA passa.
@@ -220,7 +222,7 @@ merge de uma por vez.
 
 - **Objetivo**: banco local e remoto com papéis, auditoria e testes de RLS desde o início.
 - **Specs/ADRs**: base-app §3.8, §4; identity-and-auth (tabela de `config.toml`);
-  account-lifecycle-and-privacy (auditoria e retenção); ADRs 0005, 0008.
+  account-lifecycle-and-privacy (auditoria e retenção); ADRs 0005, 0008, 0016.
 - **Escopo**:
   - **Spike S-DB-1** (primeiro): `set_config` com bind pelo pooler em modo transação.
   - **Spike S-TM-4:** documentar a cobertura do `supabase config push` e as chaves
@@ -233,10 +235,11 @@ merge de uma por vez.
   - Migration de papéis: `api_runtime` sem grants, `migrator`, `identity_system`,
     `privacy_system`, `app_config_system`, `platform_system`, `ops`, `app_config_admin`;
     revogação em `public`. Papéis-grupo NOLOGIN, sem membros no base-app: `audit_writer`,
-    `audit_operator_writer`, `audit_reader` e `app_config_writer`. `auth_fn_owner` (NOLOGIN, dono das funções
-    `SECURITY DEFINER` que tocam `auth`, com o conjunto **fixo** de grants de base-app §3.8; o pgTAP
-    compara os grants e as funções reais com núcleo mais `auth-fn-registry.d`). Migration que revoga
-    `anon` e `authenticated` em `realtime` e `storage`.
+    `audit_operator_writer`, `audit_reader` e `app_config_writer`. Funções de Auth do núcleo
+    são pequenas, registradas e pertencem a `postgres`, com EXECUTE restrito e search_path
+    vazio (ADR 0016). Extensões não podem transferir funções próprias a esse dono.
+    Storage/Realtime são verificados pela superfície desabilitada e negação funcional;
+    não se promete remover ACLs gerenciadas que o papel de migration não pode alterar.
   - Schemas `identity`, `privacy`, `app_config`, `platform`, `audit`, `ops`;
     `audit.events` com políticas (`actor_type` aceita `'operator'`; política
     `events_insert_writer` para `audit_writer`; `events_insert_operator` para `audit_operator_writer` (`audit_writer` só `system` e `webhook`;
@@ -248,8 +251,9 @@ merge de uma por vez.
     `app_config_writer` e `app_config_admin`; app-config §4); `platform.idempotency_keys` (DDL de base-app §3.7, com lease);
     `ops.purge_expired()` em lotes com evento de auditoria, `ops.purge_unconfirmed_users()` e
     `ops.check_signals()` com `ops.alerts` (ADR 0008), agendadas no `pg_cron`;
-    `identity.before_user_created` (teto de 300 contas novas por hora) ligado em
-    `config.base.toml`. `set_setting` com ator derivado de `app.operator_id`, `p_expected_updated_at` (controle
+    `identity.before_user_created` com reserva atômica de até 300 aprovações por hora,
+    sem PII, ligado em `config.base.toml`; falha posterior pode consumir a reserva.
+    Alertas ficam persistidos, sem transporte de credenciais por `pg_net` (ADR 0016). `set_setting` com ator derivado de `app.operator_id`, `p_expected_updated_at` (controle
     otimista, `AC409`), `check` de forma e limite de 20 alterações por hora (app-config §4);
     `app_config.operator_alert_exempt_keys` (vazia) e o sinal de `ops.check_signals()` para
     operador em chave fora dela.
@@ -282,8 +286,10 @@ merge de uma por vez.
     sem grant para `anon`, allowlist de grants); `anon` e `authenticated` sem acesso a `storage` e
     `realtime`; formato das colunas de `audit.events` e `delete` com GUC forjado barrados.
   - `ops.purge_expired()` apaga em lotes, grava o evento com as contagens; `purge_unconfirmed_users`
-    só apaga conta não confirmada com mais de 3 dias; `check_signals` grava em `ops.alerts` para
-    cada sinal de ADR 0008; `before_user_created` recusa a conta 301 da hora.
+    só apaga conta por e-mail não confirmada com mais de 3 dias, preservando anônimos;
+    `check_signals` persiste os sinais disponíveis de ADR 0008. Mapeamento do volume de
+    e-mail continua no S-AU-4. O hook recusa a aprovação 301 da hora, inclusive sob
+    concorrência; funções privilegiadas têm catálogo e negativas de chamada testados.
   - `set_setting` recusa operador sem `app.operator_id` igual, valor fora do `check` e a 21ª
     alteração por hora; a idempotência recusa chave de outro usuário e reassume a chave com lease
     vencido.
@@ -318,7 +324,9 @@ e-mail fora de parâmetro de rota (SH-N8 a SH-N11); fachada `extensions/api.ts`
     `extensionApiClient` e `SettingsItem` sem importar o Supabase (a regra reprova); `withPreviousSession`
     entrega só o token anterior a `fn`, faz `signOut({ scope: 'local' })` mesmo se `fn` lançar e não
     deixa o token em log, storage nem retorno; toda função de `extensionAuth` com CAPTCHA passa por
-    `withCaptcha`.
+    `withCaptcha`. O retorno de `withPreviousSession` aceita apenas dados simples
+    inspecionáveis (inclusive `undefined`), recusando token, getters, funções, classes e
+    ciclos; a limpeza da sessão capturada preserva a nova sessão primária.
   - `publicEnv`: chave sem o prefixo `EXPO_PUBLIC_`, com `SECRET`, `KEY_PRIVATE` ou `TOKEN`, ou
     repetida falha; site key de CAPTCHA passa. Uma extensão fake não alcança sessão nem token
     por `AuthMethodProps` nem por `BootContext`.
