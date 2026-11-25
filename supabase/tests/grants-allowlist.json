@@ -1,0 +1,10 @@
+{
+  "anon": [],
+  "authenticated": [
+    {
+      "schema": "audit",
+      "table": "events",
+      "privileges": ["INSERT"]
+    }
+  ]
+}

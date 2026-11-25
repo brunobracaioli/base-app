@@ -4,6 +4,10 @@
 > Este arquivo é a fonte da verdade do roadmap; a tabela do [NOTES.md](../../NOTES.md)
 > espelha a coluna Status.
 
+Execução parcial de 2026-11-25: [evidências e critérios das ondas 1/2/3](waves-1-3-verification.md).
+As três permanecem pendentes; os gates de código não substituem o aceite de banco,
+os caminhos pré-Proxy nem os builds EAS ainda não verificados.
+
 | Onda | Entrega | Depende de | Paralela com | Status |
 |------|---------|------------|--------------|--------|
 | 0 | Fundação do monorepo, tooling e CI | — | — | ✅ |

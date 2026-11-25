@@ -1,0 +1,9 @@
+{
+  "functions": [
+    {
+      "name": "before_user_created",
+      "signature": "(jsonb)",
+      "reason": "Auth before-user-created hook enforces the project-wide signup ceiling."
+    }
+  ]
+}

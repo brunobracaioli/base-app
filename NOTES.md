@@ -8,8 +8,8 @@
   ferramentas no commit `6eea6e8`; a tree do merge é a mesma validada.
   Ondas 1/2/3 em implementação paralela autorizada, uma por sessão/worktree,
   com agentes Luna/xhigh. Nenhuma delas está concluída.
-- **Próximo passo:** concluir correções e gates independentes das ondas 1/2/3,
-  resolver as decisões de contrato/segurança abaixo e revisar cada onda antes
+- **Próximo passo:** resolver as decisões de contrato/segurança abaixo, fechar
+  os aceites pendentes e revisar cada onda antes
   de integrá-la em série. Ondas 4+ não iniciadas. GitHub Actions permanece
   desativado; a execução usa o ambiente local ou a KVM existente (ADR 0015).
 - **Plano/evidências:** [onda 0](docs/plan/wave-0-execution.md). Quatro frentes de
@@ -18,6 +18,15 @@
 - **Grupo atual:** [plano e matriz de aceite das ondas 1/2/3](docs/plan/waves-1-3-execution.md).
   Branches `feat/w1-api-platform`, `feat/w2-supabase-baseline` e
   `feat/w3-mobile-shell`; o gerente coordena contratos compartilhados e integração.
+- **Verificação atual:** [relatório por critério](docs/plan/waves-1-3-verification.md).
+  W1 está no commit local `cf096e0`, com 18 gates e 216 testes aprovados.
+  W2 e o snapshot parcial W3 também passaram pelos 18 gates locais. No mobile,
+  `71845f4` corrige dependências vulneráveis e `5513866` corrige o boot com
+  campos opcionais vazios; a fachada continua pendente. Esta branch W2 usa
+  W1 como base local para validar a
+  integração; `main` permanece em `cda886d`. Não houve novo push nem PR.
+  KVM, volumes, rede, certificados temporários e túnel da verificação foram
+  removidos; os demais workloads foram preservados.
 - **Versão derivada:** o app-bootstrap (pago, repositório privado) estende este núcleo pelos
   pontos de extensão de `docs/specs/base-app.md` §3.4. Mudança no núcleo pedida por ele é
   feita aqui primeiro, de forma genérica.
@@ -74,6 +83,13 @@
   Os sinais de contas não confirmadas (acesso por função de `auth_fn_owner`)
   e volume de e-mail (mapeamento de eventos do S-AU-4, hoje na onda 6) também
   permanecem sem aceite; não foi concedido acesso direto de `ops` a `auth`.
+- **Bloqueio adicional da onda 2:** reset com sete migrations passou, mas
+  pgTAP comprovou que `postgres` não consegue aplicar a baseline exigida em
+  schemas gerenciados do Supabase. `auth_fn_owner` não recebe todos os grants
+  de Auth; Storage e `pg_net` mantêm privilégios incompatíveis. ADR 0005
+  registra a evidência e uma proposta de revisão, sem aprová-la. Não há ✅.
+  O adaptador Kysely passou no pooler TLS real, incluindo auditoria atômica,
+  rollback e microssegundos; tipos reais foram gerados sem drift.
 - **Onda 3:** `withPreviousSession<T>` deve devolver o resultado seguro sem
   deixar escapar o token. Pendente decisão sobre restringir resultados a dados
   inspecionáveis e recusar valores opacos; a assinatura não foi trocada para

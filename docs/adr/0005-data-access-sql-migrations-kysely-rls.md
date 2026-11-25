@@ -95,3 +95,73 @@ repositório e RLS como segunda barreira.
   schema.
 - **Spike S-DB-1 (onda 2):** confirmar `set_config` com bind e a troca de papel através do
   pooler em modo transação com o usuário `api_runtime`.
+
+## Evidência e bloqueios da onda 2 — 2026-11-25
+
+**S-DB-1 concluído localmente.** Na KVM existente, Supabase CLI 3.4.0,
+Postgres `17.12.0.002` e Supavisor `2.10.1`: conexão com CA verificada nos dois
+trechos, rejeição de CA errada e de cliente sem TLS, claims enviadas por bind
+(incluindo uma sonda com aspas e ponto e vírgula), `auth.uid()` correto e reuso
+do mesmo backend sem papel/claims residuais após commit. O fixture e suas
+credenciais efêmeras foram removidos. Isso não é prova de um projeto hospedado
+nem do adaptador Kysely posterior. SHA-256 do runner:
+`6db5a62a06eb87614a45de7cc47014e8218363753a34efa044a4d860db5b6c0c`;
+do recibo: `4d6f1dbb1e193efc630eacbff37cd00567b7cf64ff53fd3c2bcac61dadd93549`.
+
+Depois da implementação, um segundo harness compilou o adaptador real e o
+executou pelo pooler TLS: papel de usuário e de sistema, bind das claims,
+rollback, descarte de claims e timestamp com seis casas decimais passaram.
+O recibo está em `.artifacts/w2-verification/runtime-tls-receipt.json`, junto
+dos hashes do código e do bundle usado. A suíte unitária mantém seu teste de
+conexão condicionado ao ambiente; esta prova real é registrada separadamente.
+O mesmo harness exercitou `recordAuditEvent` com o adaptador real: uma
+transação confirmou a inserção e outra reverteu a inserção ao lançar erro.
+
+**Compatibilidade de migrations.** PostgreSQL 17 exige capacidade de `SET ROLE`
+e CREATE temporário no schema para transferir propriedade. As migrations
+retiram essas capacidades depois da transferência; pgTAP confere o resultado.
+A associação administrativa que o servidor cria para `postgres`, sem SET nem
+INHERIT, permanece gerenciada pelo provedor e não é uma associação de execução
+da aplicação. [Procedimento oficial do Supabase](https://supabase.com/kb/troubleshooting/cant-revoke-a-role-membership-granted-by-supabase_admin-d08922).
+
+**A decisão acima ainda não é implementável como especificada no ambiente
+testado.** O reset executado como `postgres` termina, mas o catálogo mostra
+`auth_fn_owner` sem USAGE em `auth` e sem parte dos grants exigidos. O hook
+falha ao acessar esse schema. Também permanecem privilégios gerenciados de
+Storage e acesso às filas/respostas de `pg_net`, reprovando a baseline. Não
+foram usados grants de `supabase_admin` nas migrations para esconder o problema.
+A documentação oficial confirma que `postgres` não pode conceder USAGE de
+`auth` a um papel customizado e propõe funções pertencentes a `postgres`, o que
+contraria a decisão 9 deste ADR. [Restrição oficial de acesso ao Auth](https://supabase.com/kb/troubleshooting/permission-errors-when-granting-custom-roles-access-to-the-auth-schema-9e32e7).
+
+**Decisão necessária:** revisar o modelo de privilégios/provedor antes de
+concluir a onda 2. Não se adotou função de Auth pertencente a `postgres`, chave
+administrativa no runtime, concessão de superusuário ou relaxamento do teste.
+O administrador descartável é usado somente para preparar fixtures pgTAP e
+trocar para os papéis sob teste; o catálogo continua refletindo migrations
+executadas como `postgres`.
+
+**Proposta para revisão, não aplicada:** substituir a regra de proprietário
+das funções de Auth pelo padrão suportado de funções pequenas pertencentes a
+`postgres`, mantendo `search_path` vazio, argumentos validados e EXECUTE
+restrito por caso de uso. Isso amplia a autoridade do definidor e exige nova
+revisão do threat model, das specs e dos testes. Separadamente, o envio via
+`pg_net` precisa garantir que filas e respostas não sejam acessíveis ao
+runtime; se essa restrição não for suportada, revisar o transporte no ADR
+0008. Não preencher os segredos de envio enquanto essa baseline reprovar.
+
+Tipos são gerados do banco real com nomes de tabela qualificados. O mapeamento
+explícito de `timestamp`/`timestamptz` para `string` coincide com os parsers do
+pool e preserva microssegundos; `--date-parser string` sozinho não altera esses
+dois tipos no kysely-codegen 0.20.0.
+
+**Guarda estática de auditoria.** Os inserts atômicos de `app_config.set_setting`
+e `ops.purge_expired` já são exigidos pelas specs. As três migrations que os
+definem têm exceção somente à regra SQL genérica de insert do Semgrep; as
+outras regras continuam ativas. `db:lint-migrations` também usa o parser real
+de PostgreSQL 17 para checar todas as migrations: só essas assinaturas, com
+retorno void, PL/pgSQL, SECURITY DEFINER e search_path vazio, podem inserir
+auditoria. Inserts avulsos, outra função, overload, contexto forjado por
+comentário e search_path inseguro reprovam. Ownership e ACL continuam sendo
+verificados no pgTAP. A regra de escrita da aplicação por `platform/audit`
+permanece sem exceções novas.

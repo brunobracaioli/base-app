@@ -1,0 +1,6 @@
+{
+  "audit_writer": ["app_config_admin"],
+  "audit_operator_writer": ["app_config_admin"],
+  "audit_reader": [],
+  "app_config_writer": []
+}

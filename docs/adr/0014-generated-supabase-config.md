@@ -2,6 +2,7 @@
 
 - **Status:** proposed
 - **Data:** 2026-11-24
+- **CLI de referência da onda 2:** Supabase CLI 3.4.0 (pin verificado em 2026-11-25)
 
 ## Contexto
 
@@ -21,8 +22,9 @@ a lista de arquivos permitidos") quebra.
   arquivo começa com o aviso "gerado; não edite".
 - Uma extensão traz o próprio fragmento como **arquivo novo** (ex.:
   `config.d/20-social-auth.toml`). Segredos só com `env(...)`, nunca o valor.
-- O `config.toml` commitado é o gerado. O CI roda o gerador e falha se houver diferença. Em
-  conflito de merge, o arquivo é regenerado, nunca resolvido à mão (spec §3.4.3).
+- O `config.toml` commitado é o gerado. O CI roda o gerador, valida o TOML pelo CLI pinado e
+  falha se houver diferença. Em conflito de merge, o arquivo é regenerado, nunca resolvido à mão
+  (spec §3.4.3).
 - Quem altera a configuração do núcleo edita `config.base.toml` e regenera.
 - **Fonte efetiva única:** o gerador e `supabase:config:check` recusam a existência
   de `supabase/config.json` ou `supabase/config.jsonc`. Versões atuais do CLI aceitam
@@ -39,6 +41,21 @@ a lista de arquivos permitidos") quebra.
   `auth.enable_anonymous_sign_ins` e `auth.enable_manual_linking` aceitam o marcador com uma
   invariante extra: valor `true` exige CAPTCHA ligado no `config.toml` gerado, e com CAPTCHA
   desligado o check falha mesmo com o marcador. O modo visitante só liga depois do CAPTCHA.
+- **Compatibilidade com CLI 3.4.0.** O formato TOML continua aceito, embora `supabase init` passe
+  a gerar JSONC. A fonte `config.base.toml` usa os nomes atuais `auth.email.enabled`,
+  `auth.sms.enabled` e `auth.external.slack_oidc`; não contém `auth.email.enable_signup`,
+  `auth.sms.enable_signup`, `auth.external.slack` nem `[auth.saml]`, que a validação 3.4.0 marca
+  como depreciados ou removidos. CAPTCHA desligado não inclui `provider` ou `secret`; quando uma
+  extensão o habilitar, o provedor é `hcaptcha` ou `turnstile` e o segredo permanece em `env(...)`.
+- **Limite do `config push` / S-TM-4.** A implementação 3.4.0 é diff-first e escreve somente
+  valores declarados para os quais há encoder hospedado; valores locais e propriedades sem
+  encoder não são prova de configuração no painel. `db.pooler.enabled`, portas locais,
+  `[local_smtp]` e `[realtime]` não têm contraparte hospedada. `[auth.saml]` não existe no schema
+  TOML dessa versão. O código-fonte do CLI é evidência de capacidade declarada, não de aplicação
+  em um projeto hospedado. S-TM-4 permanece pendente porque não foi disponibilizado um alvo
+  autorizado; antes da release, validar o diff em um projeto existente e registrar os controles
+  que exigem conferência manual no painel. Nunca usar `--yes` como substituto de autorização do
+  operador.
 
 ## Alternativas consideradas
 
@@ -57,7 +74,8 @@ a lista de arquivos permitidos") quebra.
   núcleo; uma chave sobrescrita aparece no cabeçalho do gerado.
 - O gerador precisa de teste (mescla profunda, ordem, sobrescrita listada, fragmento inválido
   falha) e de uma verificação de que um fragmento não carrega segredo literal.
-- Parte das chaves só vale no painel do Supabase; o spike S-TM-4 (onda 2) lista quais, e o how-to
-  de configuração leva a conferência manual delas.
+- O spike S-TM-4 não foi validado contra um projeto hospedado; a versão base registra explicitamente
+  a porta de autorização e os controles locais/painel, sem afirmar que a configuração remota foi
+  aplicada.
 - O ponto de extensão é mais um contrato do núcleo: mudar o formato do cabeçalho ou a regra de
   precedência é mudança incompatível (ADR 0013).

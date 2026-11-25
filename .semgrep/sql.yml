@@ -17,4 +17,9 @@ rules:
         - '**/*.sql'
       exclude:
         - /apps/web/src/platform/audit/**
+        # Required SQL audit routines; the PostgreSQL AST gate validates their
+        # exact signatures/context and rejects any other insert in these files.
+        - /supabase/migrations/20261125040643_core_domain_tables.sql
+        - /supabase/migrations/20261125040644_audit_and_privacy_routines.sql
+        - /supabase/migrations/20261125133733_reject_missing_setting_actors.sql
     pattern-regex: (?im)^\s*INSERT\s+INTO\s+"?audit"?\s*\.\s*"?events"?\b
