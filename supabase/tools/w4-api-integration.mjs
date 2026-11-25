@@ -10,8 +10,6 @@ const EXPECTED_API_ORIGIN = 'http://127.0.0.1:54421';
 const RESULT_MARKER = 'W4_API_PROOF_RESULT=';
 const BUNDLE_PATH =
   process.env.W4_API_PROOF_BUNDLE ?? path.join(os.tmpdir(), 'app-base-w4-api-proof.bundle.mjs');
-const require = createRequire(import.meta.url);
-const esbuild = require(path.join(REPOSITORY_ROOT, 'node_modules/.pnpm/node_modules/esbuild'));
 
 function emit(value) {
   process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -23,6 +21,9 @@ function fail(code) {
 }
 
 async function buildBundle() {
+  if (!path.isAbsolute(BUNDLE_PATH)) throw new Error('bundle_path');
+  const require = createRequire(import.meta.url);
+  const esbuild = require(path.join(REPOSITORY_ROOT, 'node_modules/.pnpm/node_modules/esbuild'));
   await esbuild.build({
     absWorkingDir: REPOSITORY_ROOT,
     entryPoints: ['apps/web/scripts/w4-api-proof.ts'],
@@ -35,7 +36,25 @@ async function buildBundle() {
     sourcemap: false,
     legalComments: 'none',
     logLevel: 'silent',
+    banner: {
+      js: [
+        'import { createRequire as __w4CreateRequire } from "node:module";',
+        'import { fileURLToPath as __w4FileURLToPath } from "node:url";',
+        'import { dirname as __w4Dirname } from "node:path";',
+        'const require = __w4CreateRequire(import.meta.url);',
+        'const __filename = __w4FileURLToPath(import.meta.url);',
+        'const __dirname = __w4Dirname(__filename);',
+      ].join('\n'),
+    },
   });
+}
+
+function assertBuiltBundle() {
+  if (!path.isAbsolute(BUNDLE_PATH)) throw new Error('bundle_path');
+  const stat = lstatSync(BUNDLE_PATH);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size === 0) {
+    throw new Error('bundle_missing');
+  }
 }
 
 function readPrivateJsonFile(environmentName, fallbackPath) {
@@ -147,13 +166,18 @@ function validateSafeResult(value) {
 }
 
 function runBundle(input) {
+  const childEnvironment = {
+    PATH: process.env.PATH ?? '',
+    NODE_ENV: 'test',
+    NO_COLOR: '1',
+  };
   const result = spawnSync(process.execPath, [BUNDLE_PATH], {
     cwd: REPOSITORY_ROOT,
     encoding: 'utf8',
     input: JSON.stringify(input),
     timeout: 300_000,
     maxBuffer: 2 * 1024 * 1024,
-    env: { ...process.env, NODE_ENV: 'test' },
+    env: childEnvironment,
   });
   if (result.error) throw new Error('proof_runner');
   const reportLine = result.stdout.split(/\r?\n/u).find((line) => line.startsWith(RESULT_MARKER));
@@ -166,7 +190,14 @@ function runBundle(input) {
 }
 
 async function main() {
-  if (process.argv.includes('--build-only')) {
+  const modes = process.argv
+    .slice(2)
+    .filter((argument) => argument === '--build-only' || argument === '--run-built');
+  if (modes.length !== 1 || process.argv.length !== modes.length + 2) {
+    fail('usage.mode_required');
+    return;
+  }
+  if (modes[0] === '--build-only') {
     await buildBundle();
     emit({ built: true, output: BUNDLE_PATH });
     return;
@@ -177,7 +208,7 @@ async function main() {
   }
 
   try {
-    await buildBundle();
+    assertBuiltBundle();
     const status = readSupabaseLocalStatus();
     const auth = readAuthInput();
     const database = readDatabaseInputs();
