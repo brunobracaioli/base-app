@@ -76,6 +76,8 @@ flowchart TD
   (`config`, `session`, `me`, resultados dos gates das extensões) e devolve a rota. Os testes
   cobrem todas as combinações.
 - Sem rede e sem configuração guardada: segue com os padrões (sem bloqueio).
+- Sem rede e com configuração guardada: só atualização obrigatória bloqueia; manutenção
+  guardada não bloqueia, conforme app-config AC-07.
 - Sessão guardada e sem rede: entra em `(app)` em modo offline; os termos são reavaliados quando
   `GET /v1/me` voltar a responder.
 - Sessão guardada mas refresh token revogado: o primeiro 401 que não se resolve com renovação leva

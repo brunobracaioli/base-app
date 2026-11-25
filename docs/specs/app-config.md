@@ -2,7 +2,8 @@
 
 > **Status:** proposed · **Contexto:** `app-config` · **Spec principal:** [base-app.md](base-app.md)
 > **ADRs:** [0005](../adr/0005-data-access-sql-migrations-kysely-rls.md),
-> [0012](../adr/0012-ci-cd-and-release.md)
+> [0012](../adr/0012-ci-cd-and-release.md) (histórico),
+> [0015](../adr/0015-local-and-kvm-quality-gates.md)
 
 ## 1. Visão geral
 
@@ -134,7 +135,8 @@ sequenceDiagram
 `evaluateGate(config, { appVersion, platform }): 'ok' | 'update' | 'maintenance'`. O resultado
 alimenta o gate de boot (mobile-app-shell.md). O app usa a versão **nativa** instalada
 (`Application.nativeApplicationVersion`), não a de uma atualização OTA. A última resposta fica no
-AsyncStorage (não é dado sensível).
+AsyncStorage (não é dado sensível). Conforme AC-07, sem rede a configuração guardada
+só bloqueia por atualização obrigatória; manutenção guardada não bloqueia o uso offline.
 
 ## 4. Modelo de dados
 
@@ -402,7 +404,7 @@ Erros produzidos pelo gate em qualquer rota (não só nesta):
 | `code` | Status | Quando |
 |--------|--------|--------|
 | `app.update_required` | 426 | `X-App-Version` abaixo do `minSupported` da plataforma |
-| `app.maintenance` | 503 + `Retry-After: 60` | escrita durante a manutenção |
+| `app.maintenance` | 503 + `Retry-After: 60` | qualquer método em rota não isenta durante a manutenção |
 | `rate_limited` | 429 | mais de 60 chamadas por minuto do mesmo IP |
 
 ## 6. Edge cases
@@ -420,7 +422,7 @@ Erros produzidos pelo gate em qualquer rota (não só nesta):
 | Manutenção ativa e o usuário pede exclusão de conta | recebe 503 (Q-AC-2) |
 | `minSupported` acima do `latest` armazenado | o script recusa sem `--force` (guarda de salto) |
 | `messageKey` desconhecida no app | usa `maintenance.default` |
-| Dois operadores alteram a mesma chave ao mesmo tempo | a última gravação vale; os dois eventos de auditoria ficam com `before` e `after` |
+| Dois operadores alteram a mesma chave a partir do mesmo `updated_at` | a primeira grava; a segunda recebe 409 `app_config.conflict`, sem alteração nem novo evento de sucesso |
 | Relógio do aparelho errado | irrelevante: a comparação é de versões e a manutenção não depende de hora local |
 
 ## 7. Plano de testes
@@ -429,7 +431,7 @@ Erros produzidos pelo gate em qualquer rota (não só nesta):
 
 - Comparação de versões (`1.10.0 > 1.9.0`, igual não é menor).
 - `evaluateGate` para todas as combinações (ok, update, manutenção por plataforma, manutenção global).
-- Gate do servidor: 426 por plataforma; manutenção só em escrita; `X-App-Version` ausente ou
+- Gate do servidor: 426 por plataforma; manutenção em todo método de rota não isenta; `X-App-Version` ausente ou
   inválido não bloqueia; rotas isentas nunca são bloqueadas.
 - Fallback: valor inválido usa o último válido; sem ele, o padrão seguro.
 - Montagem da URL da loja e das URLs legais a partir de `product.config.ts`.
