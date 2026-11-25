@@ -37,8 +37,7 @@ const psql = process.env.W2_PROBE_PSQL_BIN || 'psql';
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) fail('invalid_db_port');
 if (user !== 'supabase_admin') fail('db_user_must_be_supabase_admin_for_scratch_probe');
-if (!['disable', 'require', 'verify-ca', 'verify-full'].includes(sslmode))
-  fail('invalid_sslmode');
+if (!['disable', 'require', 'verify-ca', 'verify-full'].includes(sslmode)) fail('invalid_sslmode');
 
 const psqlEnvironment = {
   PATH: process.env.PATH,
@@ -149,7 +148,7 @@ const signupBatches = Array.from({ length: signupConnections }, () => []);
 for (let attempt = 0; attempt < signupAttempts; attempt += 1)
   signupBatches[attempt % signupConnections].push(attempt);
 
-const anonymousEvent = "'{\"user\":{\"is_anonymous\":true}}'::jsonb";
+const anonymousEvent = '\'{"user":{"is_anonymous":true}}\'::jsonb';
 const signupResults = await Promise.all(
   signupBatches
     .filter((batch) => batch.length > 0)
@@ -166,7 +165,11 @@ if (signupResults.some(({ result }) => result.exitCode !== 0))
   fail('signup_concurrency_sql_failed', {
     failures: signupResults
       .filter(({ result }) => result.exitCode !== 0)
-      .map(({ result }) => ({ exitCode: result.exitCode, sqlStates: result.sqlStates, timedOut: result.timedOut })),
+      .map(({ result }) => ({
+        exitCode: result.exitCode,
+        sqlStates: result.sqlStates,
+        timedOut: result.timedOut,
+      })),
   });
 
 const signupRows = signupResults.flatMap(({ batch, result }) =>
@@ -220,7 +223,10 @@ const settingTimestamps = new Map(
 const maintenanceTimestamp = settingTimestamps.get('maintenance');
 const legalTimestamp = settingTimestamps.get('legal');
 if (!maintenanceTimestamp || !legalTimestamp)
-  fail('app_config_settings_missing', { maintenancePresent: Boolean(maintenanceTimestamp), legalPresent: Boolean(legalTimestamp) });
+  fail('app_config_settings_missing', {
+    maintenancePresent: Boolean(maintenanceTimestamp),
+    legalPresent: Boolean(legalTimestamp),
+  });
 
 const actorRef = `script:app-config:${runId}`;
 const updates = [
@@ -253,7 +259,11 @@ if (successfulUpdates !== 1 || quotaRejections !== 1)
     rejected54000: quotaRejections,
     failures: updateResults
       .filter((result) => result.exitCode !== 0)
-      .map((result) => ({ exitCode: result.exitCode, sqlStates: result.sqlStates, timedOut: result.timedOut })),
+      .map((result) => ({
+        exitCode: result.exitCode,
+        sqlStates: result.sqlStates,
+        timedOut: result.timedOut,
+      })),
   });
 
 const appConfigReadback = await runPsql(`
@@ -274,7 +284,12 @@ process.stdout.write(
     ok: true,
     scratchDatabase: true,
     signup: { attempts: signupAttempts, accepted: acceptedSignups, rejected429: rejectedSignups },
-    appConfig: { initialChanges: 19, concurrentChanges: 2, accepted: successfulUpdates, rejected54000: quotaRejections },
+    appConfig: {
+      initialChanges: 19,
+      concurrentChanges: 2,
+      accepted: successfulUpdates,
+      rejected54000: quotaRejections,
+    },
     cleanup: 'manager must reset the disposable database; no existing database was modified',
   })}\n`,
 );

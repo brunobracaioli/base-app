@@ -165,9 +165,7 @@ describe('generatePgtapRegistrySql', () => {
         ],
       },
     });
-    expect(() => loadPgtapRegistryRows(extraFunctionRoot)).toThrow(
-      /not allowlisted/,
-    );
+    expect(() => loadPgtapRegistryRows(extraFunctionRoot)).toThrow(/not allowlisted/);
 
     const callerRoot = createRegistry({
       ...commonFiles(),
