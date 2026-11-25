@@ -23,7 +23,7 @@ Flags de funcionalidade (`features`) não fazem parte do base-app.
 | AC-02 | **Gate no servidor:** toda requisição com `X-App-Version` abaixo do `minSupported` da `X-Platform` recebe 426 `app.update_required`; durante a manutenção, **toda** rota, de qualquer método, recebe 503 `app.maintenance`, exceto as isentas (`GET /v1/health` e `GET /v1/app-config`) |
 | AC-03 | Modo manutenção global ou por plataforma, com chave de mensagem traduzida no app e previsão opcional de fim |
 | AC-04 | Versões atuais dos termos e da privacidade, com as URLs (consumidas por `privacy` e pelo gate de termos do app) |
-| AC-05 | Os valores ficam em `app_config.settings` e mudam pelo script `pnpm app-config:set`, que valida com Zod e grava em `audit.events`, as duas coisas por `app_config.set_setting`. Em produção o script roda num workflow do GitHub com aprovação, com o papel `app_config_writer` (só `execute` nessa função; o dono, `app_config_admin`, escreve em `settings` e em `audit.events`), nunca com a senha do `postgres` |
+| AC-05 | Os valores ficam em `app_config.settings` e mudam pelo script `pnpm app-config:set`, que valida com Zod e grava em `audit.events` atomicamente por `app_config.set_setting`. `app_config_admin` não lê linhas de auditoria: a cota de 20/h usa `ops.app_config_change_count_last_hour()` (sem argumentos, apenas escalar, `EXECUTE` só para `app_config_admin`). Em produção, o script roda num workflow aprovado com `app_config_writer` (só `execute` em `set_setting`), nunca com a senha do `postgres` |
 | AC-06 | Valor inválido no banco não derruba o endpoint: a API usa o último valor válido em memória ou os padrões seguros (sem atualização obrigatória, sem manutenção) e emite alerta |
 | AC-07 | O app guarda a última resposta. Sem rede, usa a guardada; sem nenhuma, segue com os padrões. Só bloqueia um usuário offline se a última resposta guardada já mandava atualizar |
 
@@ -198,6 +198,20 @@ A migration semeia valores iniciais; quem cria o app edita pelo script. Não há
 por esta função; ninguém além do dono escreve na tabela:
 
 ```sql
+-- Fixed quota helper; app_config_admin receives EXECUTE, never SELECT on audit.events.
+create function ops.app_config_change_count_last_hour() returns bigint
+language sql volatile security definer set search_path = '' as $$
+  select count(*)
+  from audit.events
+  where action = 'app_config.updated'
+    and occurred_at > clock_timestamp() - interval '1 hour'
+$$;
+alter function ops.app_config_change_count_last_hour() owner to ops;
+revoke all on function ops.app_config_change_count_last_hour()
+  from public, anon, authenticated, api_runtime, app_config_writer;
+grant usage on schema ops to app_config_admin;
+grant execute on function ops.app_config_change_count_last_hour() to app_config_admin;
+
 -- papel-grupo app_config_writer (NOLOGIN, sem membros no base-app): criado com os demais papéis, na migration de papéis
 
 create function app_config.set_setting(
@@ -223,9 +237,14 @@ begin
      or p_actor_ref is distinct from current_setting('app.operator_id', true)) then
     raise exception 'operator does not match transaction context' using errcode = '42501';
   end if;
-  -- limite de alterações por hora (a mesma regra vale para script e painel)
-  if (select count(*) from audit.events
-      where action = 'app_config.updated' and occurred_at > now() - interval '1 hour') >= c_max_changes_per_hour then
+  -- All writers serialize the quota check, setting write, and audit insert.
+  if current_setting('transaction_isolation') <> 'read committed' then
+    raise exception 'app_config requires read committed isolation' using errcode = '25001';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('base-app-config:' || p_key, 0));
+  perform pg_advisory_xact_lock(hashtextextended('base-app-config-hourly-limit', 0));
+  -- Volatile helper reads a fresh READ COMMITTED snapshot after the lock wait.
+  if ops.app_config_change_count_last_hour() >= c_max_changes_per_hour then
     raise exception 'too many app_config changes' using errcode = '54000';
   end if;
 
@@ -330,9 +349,12 @@ regras cruzadas do script) **antes** de chamar `set_setting`. Um teste garante q
 | Tabela | `anon`, `authenticated`, `api_runtime` | `app_config_system` | `app_config_admin` |
 |--------|----------------------------------------|---------------------|--------------------|
 | `settings` | nenhum grant | select | select, insert, update (sem delete) |
+| `audit.events` | nenhum grant | nenhum grant | nenhum grant de leitura; insert via papel de auditoria |
+| `ops.app_config_change_count_last_hour()` | nenhum grant | nenhum grant | execute |
 
-`app_config_admin` é dono de `app_config.set_setting` e membro de `audit_writer` e de `audit_operator_writer`, por onde
-insere em `audit.events` (account-lifecycle-and-privacy.md). `app_config_writer` só tem
+`app_config_admin` é dono de `app_config.set_setting`, pode executar o helper escalar de cota e
+é membro de `audit_writer` e de `audit_operator_writer`, por onde insere em `audit.events`
+(account-lifecycle-and-privacy.md). Não tem `SELECT` direto nos eventos. `app_config_writer` só tem
 `execute` na função, sem grant de tabela. A conexão do script usa um usuário de login dedicado
 que só assume `app_config_writer`.
 
@@ -422,6 +444,9 @@ Erros produzidos pelo gate em qualquer rota (não só nesta):
   transação; falha na auditoria desfaz o `upsert`. A função recusa chave desconhecida e
   `p_actor_type` fora de `system` e `operator`, e grava `before` e `after`; o `execute` é negado a
   `public`, `authenticated` e `app_config_system`.
+- `app_config_admin` não tem `SELECT` em `audit.events`, mas consegue chamar o helper escalar;
+  `app_config_writer`, `api_runtime`, `anon` e `authenticated` não conseguem executá-lo. A cota
+  admite a 20ª alteração e rejeita a 21ª sob o lock horário.
 - Controle otimista: duas escritas com o mesmo `p_expected_updated_at` → a segunda levanta `AC409`
   (409 `app_config.conflict`) e não grava; `null` numa chave existente falha; `null` numa chave
   nova passa. `ops.check_signals()` grava alerta quando um evento `operator` altera chave fora de
@@ -431,7 +456,8 @@ Erros produzidos pelo gate em qualquer rota (não só nesta):
   `grant app_config_writer` (extensão fake) altera `maintenance` e deixa o evento `operator`.
 - `APP_CONFIG_KEYS`, a lista da função e o `check` da tabela coincidem; `appConfigValueSchemas`
   tem um schema por chave.
-- pgTAP: `app_config_system` só lê; `app_config_admin` não tem `delete`; `app_config_writer` sem
+- pgTAP: `app_config_system` só lê; `app_config_admin` não tem `delete` nem `SELECT` em
+  `audit.events`; `app_config_writer` sem
   grant de tabela e com `execute` só na função; `authenticated` e `anon` não
   alcançam a tabela; nenhum papel altera `audit.events` além do `insert`.
 - A resposta não varia com query string e traz os headers de cache esperados.

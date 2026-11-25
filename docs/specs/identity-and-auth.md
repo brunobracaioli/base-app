@@ -45,7 +45,7 @@ Fora do escopo: login social, modo visitante, MFA para o usuário final (Q-AU-2)
 | ID-14 | O adaptador do Supabase Auth no app aceita um `captchaToken` opcional, obtido do `CaptchaProvider` registrado por uma extensão. **Toda** chamada que aceita `captchaToken` (cadastro, `signInWithPassword`, `signInWithOtp`, `resetPasswordForEmail`, `resend`, `reauthenticate`, login social e anônimo) passa por `withCaptcha(provider, action, call)`, que é do núcleo (`apps/mobile/src/features/auth/api/with-captcha.ts`; contrato em base-app.md §3.4.2 e mobile-app-shell.md §3.8). No base-app o provedor é nulo, `withCaptcha` chama `call(undefined)` e nenhuma chamada leva o campo |
 | ID-15 | O Auth envia os e-mails direto pelo SMTP do Resend, de um **subdomínio de envio dedicado** (ex.: `mail.<domínio>`), com SPF, DKIM e DMARC (§3.8). A API não participa do envio. O texto de todo e-mail com código traz "não compartilhe este código" |
 | ID-17 | Contas que nunca confirmaram o e-mail são removidas depois de 3 dias por `ops.purge_unconfirmed_users()` (`pg_cron`, ADR 0008) |
-| ID-18 | O projeto aceita no máximo 300 contas novas por hora (hook `before_user_created`, §3.7); acima disso o cadastro responde 429 |
+| ID-18 | O hook `before_user_created` reserva atomicamente no máximo 300 aprovações em janela móvel de uma hora; cada repetição do hook e cada falha posterior do Auth consomem uma vaga até ela vencer; acima do teto responde 429 |
 | ID-16 | `AuthContext` expõe `isAnonymous`, `appRoles` e `providers`, lidos do JWT e validados (§3.5). `platform/auth` exporta `verifyAccessToken(token)` para rotas de extensão que recebem um segundo token no corpo. O base-app nunca liga o login anônimo |
 
 ### 2.2 Não funcionais
@@ -133,8 +133,10 @@ sequenceDiagram
   a migration `identity.clear_unverified_password()`: um trigger em `auth.users`
   (`after update of email_confirmed_at ... when old.email_confirmed_at is null and
   new.email_confirmed_at is not null`) zera `encrypted_password` na primeira confirmação do
-  e-mail. A função é `SECURITY DEFINER`, dona de `auth_fn_owner` (`update (banned_until, encrypted_password)`
-  em `auth.users`), com `search_path = ''`. Como o app nunca define senha antes da
+  e-mail. Se a decisão de W6 mantiver o trigger, a função será `SECURITY DEFINER`, terá owner
+  `postgres`, `search_path = ''` e um `EXECUTE`/trigger path estritamente limitado; W6 incluirá
+  a assinatura e os chamadores no registry fechado, com revisão de ameaça e testes próprios.
+  Como o app nunca define senha antes da
   confirmação, a regra "nenhuma senha vale antes da primeira confirmação" não atinge usuário
   legítimo. Quem controla o trigger: o spike confirma se o `migrator` pode criá-lo em
   `auth.users`; se não, a migration é aplicada uma vez por quem cria o projeto, e o pgTAP
@@ -356,7 +358,7 @@ mão (ADR 0014).
 | `auth.rate_limit.email_sent` | 60 por hora (mínimo 30, máximo 300; = 1,5 × o pico horário esperado) | **teto global do projeto**, não por IP nem por destinatário (R-ID-3). Alerta em 70% (§3.8) |
 | `auth.rate_limit.sign_in_sign_ups` | 30 por 5 min por IP | força bruta |
 | `auth.rate_limit.token_verifications` | 30 por 5 min por IP (plano B de S-AU-4: 10) | força bruta de OTP; teto também invariante |
-| `auth.hook.before_user_created.enabled` / `.uri` | `true` / `pg-functions://postgres/identity/before_user_created` | teto de 300 contas novas por hora no projeto (ID-18); a função conta `auth.users` da última hora e devolve erro 429; `execute` só para `supabase_auth_admin` |
+| `auth.hook.before_user_created.enabled` / `.uri` | `true` / `pg-functions://postgres/identity/before_user_created` | reserva atômica de até 300 aprovações por hora (ID-18), sem exigir e-mail no evento; erro 429 ao exceder; `execute` só para `supabase_auth_admin` |
 | `auth.external.<provedor>.enabled` | false, para todos os provedores aceitos pela CLI, inclusive `slack_oidc` | superfície não usada; extensão liga em fragmento |
 | `auth.sms.enabled` | false | provedor SMS desligado; `auth.enable_signup` permanece true para o cadastro por e-mail |
 | `auth.mfa.*.enroll_enabled` / `auth.oauth_server.enabled` / `auth.web3.*.enabled` | false | sem MFA de usuário final, servidor OAuth ou web3 (Q-AU-2) |
@@ -451,37 +453,40 @@ derrube os e-mails institucionais.
   uma caixa monitorada. Limiares de ação: bounce ≥ 2% ou reclamação ≥ 0,05% (os limites do
   provedor são 4% e 0,08%). Nas 4 primeiras semanas depois do lançamento, revisão diária do
   painel; depois, semanal (runbook `docs/how-to/email-abuse-response.md`).
-- Alerta de volume: `ops.check_signals()` (ADR 0008) conta, na última hora, as ações de
-  `auth.audit_log_entries` que correspondem a envio de e-mail (lista fechada no spike S-AU-4) e
-  avisa o operador em 70% e 90% de `email_sent`. O app e a página de exclusão reportam ao Sentry
+- Alerta de volume de envio não entra na W2: `auth.audit_log_entries` ainda não tem um
+  mapeamento aprovado para `email_sent`. Depois do spike S-AU-4, o alerta conserva os limiares
+  já especificados de 70% e 90%; qualquer canal externo exige ADR próprio. O app e a página de exclusão reportam ao Sentry
   o erro `over_email_send_rate_limit` (evento sem PII, `fingerprint` fixo; regra: 3 eventos em
   10 min).
 - Runbook (`docs/how-to/email-abuse-response.md`): reduzir `email_sent` e
   `token_verifications`; ligar CAPTCHA por extensão; rotacionar a credencial SMTP; confirmar o
   DMARC; contatar o suporte do Resend. A aceitação de R3 depende destes itens.
 
-**Limpeza de contas não confirmadas.** `ops.purge_unconfirmed_users()` (dona
-`auth_fn_owner`, `pg_cron` diário) apaga em lotes de 500 as contas com `email_confirmed_at is
-null` e `created_at` com mais de 3 dias, e grava o evento `ops.purge_unconfirmed_users` com a
-contagem.
+**Limpeza de contas não confirmadas.** `ops.purge_unconfirmed_users()` (owner `ops`, `pg_cron`
+diário) chama somente `identity.count_unconfirmed_users()` e
+`identity.delete_unconfirmed_users()` (helpers `postgres`-owned executáveis por `ops`). A
+exclusão remove em lotes fixos de até 500 apenas contas com e-mail, não anônimas, sem
+`email_confirmed_at` e `created_at` há mais de 3 dias; mantém contas anônimas, confirmadas e
+recentes. O wrapper `ops` grava exatamente um evento count-only `ops.purge_unconfirmed_users`,
+inclusive com contagem zero. `ops.check_signals()` consulta o mesmo contador sem ler `auth.*`
+diretamente.
 
 **Teto de contas novas.**
 
 ```sql
-create function identity.before_user_created(event jsonb) returns jsonb
-language plpgsql security definer set search_path = '' as $$
-declare c_cap constant int := 300;
-begin
-  if (select count(*) from auth.users where created_at > now() - interval '1 hour') >= c_cap then
-    return jsonb_build_object('error', jsonb_build_object(
-      'message', 'signups temporarily limited', 'http_code', 429));
-  end if;
-  return '{}'::jsonb;
-end $$;
-alter function identity.before_user_created(jsonb) owner to auth_fn_owner;
-revoke all on function identity.before_user_created(jsonb) from public, anon, authenticated;
-grant usage on schema identity to supabase_auth_admin;
-grant execute on function identity.before_user_created(jsonb) to supabase_auth_admin;
+-- identity.signup_reservations stores only an opaque UUID and a timestamp.
+-- Purge, count and insert execute under one fixed transaction advisory lock.
+-- The hook does not read email or any other user property to enforce the cap.
+create table identity.signup_reservations (
+  reservation_id uuid primary key default gen_random_uuid(),
+  reserved_at timestamptz not null default clock_timestamp()
+);
+
+-- identity.before_user_created(event) validates the event/user object, but
+-- accepts an anonymous user with no email. It deletes expired reservations,
+-- denies when 300 are still in the rolling hour, and otherwise inserts one.
+-- Owner: postgres. EXECUTE: supabase_auth_admin only. Non-READ-COMMITTED
+-- transactions and the 1500ms lock/1750ms statement timeout fail closed.
 ```
 
 ## 4. Modelo de dados
@@ -674,8 +679,12 @@ direto para a tela.
   §3.7; um fragmento de teste que afrouxa uma chave protegida falha sem o marcador;
   `enable_anonymous_sign_ins = true` ou `enable_manual_linking = true` passa com o marcador e
   CAPTCHA ligado, e falha com o marcador e CAPTCHA desligado.
-- `before_user_created` recusa a conta 301 da hora com 429; `ops.purge_unconfirmed_users()`
-  apaga só conta não confirmada com mais de 3 dias.
+- `before_user_created` aceita até 300 reservas e recusa a 301ª com 429 sob concorrência;
+  uma repetição/falha posterior consome reserva; evento malformado e timeout falham fechados;
+  um usuário anônimo sem `email` pode ser aprovado abaixo do teto.
+- `ops.purge_unconfirmed_users()` apaga apenas contas não anônimas com e-mail, não confirmadas
+  há mais de 3 dias, em lotes de até 500, preservando contas anônimas, confirmadas e recentes;
+  `ops.check_signals()` grava a contagem sem ler Auth diretamente.
 - Confirmação obrigatória: `signInWithPassword` antes de confirmar falha; depois de confirmar
   funciona.
 - Redefinição por código ponta a ponta; as outras sessões são encerradas.
