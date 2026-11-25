@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
+import type { Pool } from 'pg';
 
 import { ConsentRecord } from '../../modules/privacy';
 import type { ConsentRepository, LegalVersionsReader } from '../../modules/privacy';
 import { createPrivacyUseCases } from '../../modules/privacy';
-import { createIdentityUseCases, UserProfile } from '../../modules/identity';
+import {
+  createIdentityUseCases,
+  createProfileRepository,
+  UserProfile,
+} from '../../modules/identity';
 import type { ProfileRepository } from '../../modules/identity';
 import type { CoreComposition } from '../composition/core';
+import { createDatabaseRuntime } from '../db/runtime';
+import type { AppLogger } from '../observability/logger';
+import type { DatabaseEnvironment } from '../env';
 import {
   createTestRouteDependencies,
   createTestUserAuthContext,
@@ -17,6 +25,13 @@ import { createCoreRouteDefinitions } from './core-routes';
 
 const NOW = new Date('2026-11-25T12:00:00.000Z');
 const LEGAL_VERSIONS = { termsVersion: '2026-11-24', privacyVersion: '2026-11-25' } as const;
+const DATABASE_ENVIRONMENT: DatabaseEnvironment = {
+  DATABASE_URL: 'postgresql://api_runtime:secret@db.example.invalid:6543/postgres',
+  DATABASE_CA_CERT: '-----BEGIN CERTIFICATE-----\nlocal-test-ca\n-----END CERTIFICATE-----',
+};
+
+type SqlCall = { readonly text: string; readonly values: readonly unknown[] };
+type FakeQuery = string | { readonly text: string; readonly values?: readonly unknown[] };
 
 type FakeCoreState = {
   readonly runtime: CoreComposition;
@@ -163,6 +178,39 @@ function request(path: string, method: string, token: string, body?: unknown): R
   });
 }
 
+function createForeignKeyFailureDatabase() {
+  const calls: SqlCall[] = [];
+  const foreignKeyError = Object.assign(new Error('auth.users foreign key does not exist'), {
+    code: '23503',
+  });
+  const client = {
+    async query(query: FakeQuery, values?: readonly unknown[]) {
+      const text = typeof query === 'string' ? query : query.text;
+      const parameters = values ?? (typeof query === 'string' ? [] : (query.values ?? []));
+      calls.push({ text, values: parameters });
+      if (text.toLowerCase().startsWith('insert into "identity"."profiles"')) {
+        throw foreignKeyError;
+      }
+      return { rows: [], rowCount: 0, command: 'SELECT', oid: 0, fields: [] };
+    },
+    release() {},
+  };
+  const pool = {
+    async connect() {
+      return client;
+    },
+    on() {},
+    async end() {},
+  } as unknown as Pool;
+  const logger: AppLogger = { info() {}, warn() {}, error() {} };
+  const database = createDatabaseRuntime(
+    DATABASE_ENVIRONMENT,
+    { extensionSystemRoles: [], logger },
+    { createPool: () => pool, attachDatabasePool() {} },
+  );
+  return { database, calls };
+}
+
 describe('W4 core endpoint definitions', () => {
   it('isolates GET and PATCH by the verified JWT subject', async () => {
     const routes = protectedRoutes(createFakeCoreState());
@@ -268,5 +316,52 @@ describe('W4 core endpoint definitions', () => {
     expect(second.status).toBe(200);
     expect(routes.state.creationCount.get(TEST_USER_A)).toBe(1);
     expect(routes.state.profiles.size).toBe(1);
+  });
+
+  it('maps a profile foreign-key violation to auth.account_deleted without exposing database details', async () => {
+    const { database, calls } = createForeignKeyFailureDatabase();
+    const runtime: CoreComposition = {
+      async getMe({ auth }) {
+        const profiles = createProfileRepository({
+          database,
+          dbClaims: auth.dbClaims,
+          supportedLocales: ['pt-BR', 'en', 'es'],
+        });
+        await profiles.ensureProfile({ userId: auth.dbClaims.sub, initialLocale: 'pt-BR' });
+        throw new Error('unreachable after failed profile insert');
+      },
+      async updateMe() {
+        throw new Error('not used in this test');
+      },
+      async acceptConsent() {
+        throw new Error('not used in this test');
+      },
+      async loadFreshRoles() {
+        return [];
+      },
+    };
+    const dependencies = createTestRouteDependencies({
+      overrides: {
+        async authenticateUser() {
+          return { ok: true, value: createTestUserAuthContext(TEST_USER_A) };
+        },
+      },
+    });
+    const route = createDefineRoute(dependencies.dependencies)(
+      createCoreRouteDefinitions(() => runtime).getMe,
+    );
+
+    try {
+      const response = await route(request('me', 'GET', 'tokenA'));
+      const body = await response.text();
+      expect(response.status).toBe(401);
+      expect(JSON.parse(body)).toMatchObject({ code: 'auth.account_deleted' });
+      expect(body).not.toContain('auth.users');
+      expect(body).not.toContain('23503');
+      const insert = calls.find((call) => call.text.toLowerCase().startsWith('insert into'));
+      expect(insert?.values).toEqual([TEST_USER_A, 'pt-BR']);
+    } finally {
+      await database.destroy();
+    }
   });
 });
