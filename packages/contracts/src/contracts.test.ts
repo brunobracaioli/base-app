@@ -9,7 +9,11 @@ import {
   extensionEndpoints,
   generateOpenApiYaml,
   HealthResponseSchema,
+  ConsentBody,
+  Locale,
+  Me,
   ProblemDetailsSchema,
+  UpdateProfileBody,
 } from './index.js';
 
 describe('base API contracts', () => {
@@ -46,8 +50,12 @@ describe('base API contracts', () => {
     expect(extensionEndpoints).toEqual([]);
     expect(coreEndpoints.map(({ method, path }) => `${method.toUpperCase()} ${path}`)).toEqual([
       'GET /v1/health',
+      'GET /v1/me',
+      'PATCH /v1/me',
+      'POST /v1/me/consents',
     ]);
-    expect(coreEndpoints.every((endpoint) => endpoint.security.length === 0)).toBe(true);
+    expect(coreEndpoints[0]?.security).toEqual([]);
+    expect(coreEndpoints.slice(1).every((endpoint) => endpoint.security.length > 0)).toBe(true);
   });
 
   it('declares health rate-limit metadata and emits an OpenAPI 3.1 public operation', () => {
@@ -65,6 +73,8 @@ describe('base API contracts', () => {
 
     const document = buildOpenApiDocument();
     expect(document.openapi).toBe('3.1.0');
+    expect(document.info.version).toBe('1.1.0');
+    expect(document.info.description).toMatch(/Compatible additive revision/);
     expect(document.paths['/v1/health']?.get?.security).toEqual([]);
     expect(document.paths['/v1/health']?.get?.['x-rate-limit-ip-limit']).toBe(60);
     expect(document.paths['/v1/health']?.get?.['x-rate-limit-failure']).toBe('open');
@@ -79,6 +89,91 @@ describe('base API contracts', () => {
 
     expect(first).toBe(second);
     expect(parse(first)).toEqual(buildOpenApiDocument());
+  });
+
+  it('validates strict profile and consent schemas using product locales', () => {
+    const me = {
+      id: '6f0e1c2a-8b6d-4f0a-9d63-0c5c9f1a2b3c',
+      email: 'user@example.com',
+      displayName: 'Ana',
+      locale: Locale.options[0],
+      createdAt: '2026-11-24T12:00:00Z',
+      consents: { needsAcceptance: ['terms'] },
+    };
+    expect(Me.parse(me)).toEqual(me);
+    expect(() => Me.parse({ ...me, unknown: true })).toThrow(ZodError);
+    expect(() => Me.parse({ ...me, locale: 'fr' })).toThrow(ZodError);
+
+    expect(UpdateProfileBody.parse({ displayName: ' Ana ' })).toEqual({ displayName: 'Ana' });
+    expect(UpdateProfileBody.parse({ locale: Locale.options[0] })).toEqual({
+      locale: Locale.options[0],
+    });
+    expect(() => UpdateProfileBody.parse({})).toThrow(ZodError);
+    expect(() => UpdateProfileBody.parse({ displayName: '   ' })).toThrow(ZodError);
+    expect(() => UpdateProfileBody.parse({ displayName: 'Ana', userId: me.id })).toThrow(
+      ZodError,
+    );
+
+    const consent = { document: 'terms', version: '2026-11-24' };
+    expect(ConsentBody.parse(consent)).toEqual(consent);
+    expect(() => ConsentBody.parse({ ...consent, extra: true })).toThrow(ZodError);
+    expect(() => ConsentBody.parse({ ...consent, version: '2026-2-4' })).toThrow(ZodError);
+  });
+
+  it('declares authenticated user limits and OpenAPI request/problem responses', () => {
+    const getMe = coreEndpoints.find(({ operationId }) => operationId === 'getMe');
+    const updateMe = coreEndpoints.find(({ operationId }) => operationId === 'updateMe');
+    const acceptConsent = coreEndpoints.find(
+      ({ operationId }) => operationId === 'acceptConsent',
+    );
+    expect(getMe?.rateLimit).toEqual({
+      key: 'user',
+      limit: 60,
+      windowSec: 60,
+      ipLimit: 120,
+      onStoreFailure: 'closed',
+    });
+    expect(updateMe?.rateLimit).toEqual({
+      key: 'user',
+      limit: 20,
+      windowSec: 60,
+      ipLimit: 120,
+      onStoreFailure: 'closed',
+    });
+    expect(acceptConsent?.rateLimit).toEqual({
+      key: 'user',
+      limit: 20,
+      windowSec: 3_600,
+      ipLimit: 120,
+      onStoreFailure: 'closed',
+    });
+
+    const document = buildOpenApiDocument();
+    const patch = document.paths['/v1/me']?.patch;
+    expect(patch?.requestBody).toMatchObject({
+      required: true,
+      content: {
+        'application/json': { schema: { $ref: '#/components/schemas/UpdateProfileBody' } },
+      },
+    });
+    expect(document.components.schemas.UpdateProfileBody?.additionalProperties).toBe(false);
+
+    const consent = document.paths['/v1/me/consents']?.post;
+    expect(consent?.requestBody).toMatchObject({
+      required: true,
+      content: {
+        'application/json': { schema: { $ref: '#/components/schemas/ConsentBody' } },
+      },
+    });
+    expect(consent?.responses['204']).toEqual({
+      description: 'The consent was accepted or had already been accepted.',
+    });
+    expect(consent?.responses['409']?.description).toMatch(/no longer current/);
+    for (const status of ['400', '401', '409', '429', '503']) {
+      expect(consent?.responses[status]?.content?.['application/problem+json']?.schema).toEqual({
+        $ref: '#/components/schemas/ProblemDetails',
+      });
+    }
   });
 
   it('registers schemas used by extension endpoints', () => {
@@ -144,7 +239,7 @@ describe('base API contracts', () => {
         ...coreEndpoints,
         { ...extensionEndpoint, responseSchemaName: 'HealthResponse' },
       ]),
-    ).toThrow(/Conflicting OpenAPI response schema name/);
+    ).toThrow(/Conflicting OpenAPI schema name/);
     expect(() =>
       buildOpenApiDocument([
         ...coreEndpoints,

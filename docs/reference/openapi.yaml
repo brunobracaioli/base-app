@@ -1,5 +1,20 @@
 components:
   schemas:
+    ConsentBody:
+      additionalProperties: false
+      properties:
+        document:
+          enum:
+            - terms
+            - privacy
+          type: string
+        version:
+          pattern: ^\d{4}-\d{2}-\d{2}$
+          type: string
+      required:
+        - document
+        - version
+      type: object
     HealthResponse:
       additionalProperties: false
       properties:
@@ -8,6 +23,57 @@ components:
           type: string
       required:
         - status
+      type: object
+    Me:
+      additionalProperties: false
+      properties:
+        consents:
+          additionalProperties: false
+          properties:
+            needsAcceptance:
+              items:
+                enum:
+                  - terms
+                  - privacy
+                type: string
+              type: array
+          required:
+            - needsAcceptance
+          type: object
+        createdAt:
+          description: Creation time of the identity.profiles row.
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+          type: string
+        displayName:
+          anyOf:
+            - maxLength: 80
+              minLength: 1
+              type: string
+            - type: "null"
+        email:
+          anyOf:
+            - format: email
+              pattern: ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+              type: string
+            - type: "null"
+        id:
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          type: string
+        locale:
+          enum:
+            - pt-BR
+            - en
+            - es
+          type: string
+      required:
+        - id
+        - email
+        - displayName
+        - locale
+        - createdAt
+        - consents
       type: object
     ProblemDetails:
       additionalProperties: false
@@ -44,14 +110,31 @@ components:
         - code
         - requestId
       type: object
+    UpdateProfileBody:
+      additionalProperties: false
+      properties:
+        displayName:
+          anyOf:
+            - maxLength: 80
+              minLength: 1
+              type: string
+            - type: "null"
+        locale:
+          enum:
+            - pt-BR
+            - en
+            - es
+          type: string
+      type: object
   securitySchemes:
     bearerAuth:
       bearerFormat: JWT
       scheme: bearer
       type: http
 info:
+  description: "Compatible additive revision: adds authenticated profile and consent operations without changing existing operations."
   title: base-app API
-  version: 1.0.0
+  version: 1.1.0
 openapi: 3.1.0
 paths:
   /v1/health:
@@ -77,5 +160,140 @@ paths:
       x-rate-limit-key: ip
       x-rate-limit-limit: 60
       x-rate-limit-window-sec: 60
+  /v1/me:
+    get:
+      operationId: getMe
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+          description: The authenticated user profile and consent state.
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: The authentication token is missing, invalid, expired, or belongs to a deleted account.
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: The request exceeded the configured rate limit.
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: Authentication or rate limiting is unavailable.
+      security:
+        - bearerAuth: []
+      summary: Read the authenticated user profile and consent state
+      x-rate-limit-failure: closed
+      x-rate-limit-ip-limit: 120
+      x-rate-limit-key: user
+      x-rate-limit-limit: 60
+      x-rate-limit-window-sec: 60
+    patch:
+      operationId: updateMe
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileBody"
+        description: Profile fields to update. At least one field is required.
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+          description: The updated authenticated user profile and consent state.
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: The request body failed validation.
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: The authentication token is missing, invalid, expired, or belongs to a deleted account.
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: The request exceeded the configured rate limit.
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: Authentication or rate limiting is unavailable.
+      security:
+        - bearerAuth: []
+      summary: Update the authenticated user profile
+      x-rate-limit-failure: closed
+      x-rate-limit-ip-limit: 120
+      x-rate-limit-key: user
+      x-rate-limit-limit: 20
+      x-rate-limit-window-sec: 60
+  /v1/me/consents:
+    post:
+      operationId: acceptConsent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentBody"
+        description: The legal document and current version being accepted.
+        required: true
+      responses:
+        "204":
+          description: The consent was accepted or had already been accepted.
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: The request body failed validation.
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: The authentication token is missing, invalid, expired, or belongs to a deleted account.
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: The submitted legal document version is no longer current.
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: The request exceeded the configured rate limit.
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+          description: Authentication or rate limiting is unavailable.
+      security:
+        - bearerAuth: []
+      summary: Record acceptance of a current legal document version
+      x-rate-limit-failure: closed
+      x-rate-limit-ip-limit: 120
+      x-rate-limit-key: user
+      x-rate-limit-limit: 20
+      x-rate-limit-window-sec: 3600
 servers:
   - url: /api

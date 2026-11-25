@@ -7,7 +7,10 @@ import type { EndpointContract } from './endpoints.js';
 
 type OpenApiResponse = {
   readonly description: string;
-  readonly content: Readonly<
+  readonly content?: OpenApiContent;
+};
+
+type OpenApiContent = Readonly<
     Record<
       string,
       {
@@ -15,12 +18,23 @@ type OpenApiResponse = {
       }
     >
   >;
-};
 
 type OpenApiOperation = {
   readonly operationId: string;
   readonly summary: string;
   readonly security: readonly Readonly<Record<string, readonly string[]>>[];
+  readonly requestBody?: {
+    readonly description: string;
+    readonly required: boolean;
+    readonly content: Readonly<
+      Record<
+        string,
+        {
+          readonly schema: Readonly<Record<string, unknown>>;
+        }
+      >
+    >;
+  };
   readonly responses: Readonly<Record<string, OpenApiResponse>>;
   readonly 'x-rate-limit-key': string;
   readonly 'x-rate-limit-limit': number;
@@ -31,7 +45,11 @@ type OpenApiOperation = {
 
 type OpenApiDocument = {
   readonly openapi: '3.1.0';
-  readonly info: { readonly title: string; readonly version: string };
+  readonly info: {
+    readonly title: string;
+    readonly version: string;
+    readonly description: string;
+  };
   readonly servers: readonly { readonly url: string }[];
   readonly paths: Readonly<Record<string, Readonly<Record<string, OpenApiOperation>>>>;
   readonly components: {
@@ -54,7 +72,7 @@ function toOpenApiSchema(schema: z.ZodType): Readonly<Record<string, unknown>> {
   return jsonSchema;
 }
 
-function responseContent(schemaName: string): OpenApiResponse['content'] {
+function responseContent(schemaName: string): OpenApiContent {
   return {
     'application/json': {
       schema: { $ref: `#/components/schemas/${schemaName}` },
@@ -62,7 +80,7 @@ function responseContent(schemaName: string): OpenApiResponse['content'] {
   };
 }
 
-function problemContent(): OpenApiResponse['content'] {
+function problemContent(): OpenApiContent {
   return {
     'application/problem+json': {
       schema: { $ref: '#/components/schemas/ProblemDetails' },
@@ -71,12 +89,34 @@ function problemContent(): OpenApiResponse['content'] {
 }
 
 function buildOperation(endpoint: EndpointContract): OpenApiOperation {
-  const responses: Record<string, OpenApiResponse> = {
-    [String(endpoint.successStatus)]: {
-      description: endpoint.successDescription,
-      content: responseContent(endpoint.responseSchemaName),
-    },
+  const hasResponseSchema =
+    endpoint.responseSchemaName !== undefined && endpoint.responseSchema !== undefined;
+  if ((endpoint.responseSchemaName === undefined) !== (endpoint.responseSchema === undefined)) {
+    throw new Error(`Incomplete success response schema for ${endpoint.operationId}`);
+  }
+  if (endpoint.successStatus === 204 && hasResponseSchema) {
+    throw new Error(`A 204 response cannot define a body schema for ${endpoint.operationId}`);
+  }
+  if (endpoint.successStatus !== 204 && !hasResponseSchema) {
+    throw new Error(`A response schema is required for ${endpoint.operationId}`);
+  }
+
+  const successResponse: OpenApiResponse = {
+    description: endpoint.successDescription,
+    ...(hasResponseSchema && endpoint.responseSchemaName !== undefined
+      ? { content: responseContent(endpoint.responseSchemaName) }
+      : {}),
   };
+  const responses: Record<string, OpenApiResponse> = {
+    [String(endpoint.successStatus)]: successResponse,
+  };
+
+  for (const problem of endpoint.problemResponses ?? []) {
+    responses[String(problem.status)] = {
+      description: problem.description,
+      content: problemContent(),
+    };
+  }
 
   for (const status of endpoint.rateLimitErrorStatuses) {
     responses[String(status)] = {
@@ -85,10 +125,23 @@ function buildOperation(endpoint: EndpointContract): OpenApiOperation {
     };
   }
 
+  const requestBody = endpoint.requestBody
+    ? {
+        description: endpoint.requestBody.description,
+        required: endpoint.requestBody.required ?? true,
+        content: {
+          'application/json': {
+            schema: { $ref: `#/components/schemas/${endpoint.requestBody.schemaName}` },
+          },
+        },
+      }
+    : undefined;
+
   return {
     operationId: endpoint.operationId,
     summary: endpoint.summary,
     security: endpoint.security,
+    ...(requestBody ? { requestBody } : {}),
     responses,
     'x-rate-limit-key': endpoint.rateLimit.key,
     'x-rate-limit-limit': endpoint.rateLimit.limit,
@@ -102,7 +155,7 @@ export function buildOpenApiDocument(
   endpoints: readonly EndpointContract[] = [...coreEndpoints, ...extensionEndpoints],
 ): OpenApiDocument {
   const paths: Record<string, Record<string, OpenApiOperation>> = {};
-  const responseSchemas = new Map<string, z.ZodType>(Object.entries(baseResponseSchemas));
+  const schemas = new Map<string, z.ZodType>(Object.entries(baseResponseSchemas));
   const operationIds = new Set<string>();
 
   for (const endpoint of endpoints) {
@@ -112,15 +165,23 @@ export function buildOpenApiDocument(
     }
     operationIds.add(endpoint.operationId);
 
-    if (!/^[A-Za-z][A-Za-z0-9]*$/.test(endpoint.responseSchemaName)) {
-      throw new Error(`Invalid response schema name: ${endpoint.responseSchemaName}`);
-    }
+    const registerSchema = (name: string, schema: z.ZodType, role: string): void => {
+      if (!/^[A-Za-z][A-Za-z0-9]*$/.test(name)) {
+        throw new Error(`Invalid OpenAPI ${role} schema name: ${name}`);
+      }
+      const registeredSchema = schemas.get(name);
+      if (registeredSchema !== undefined && registeredSchema !== schema) {
+        throw new Error(`Conflicting OpenAPI schema name: ${name}`);
+      }
+      schemas.set(name, schema);
+    };
 
-    const registeredSchema = responseSchemas.get(endpoint.responseSchemaName);
-    if (registeredSchema !== undefined && registeredSchema !== endpoint.responseSchema) {
-      throw new Error(`Conflicting OpenAPI response schema name: ${endpoint.responseSchemaName}`);
+    if (endpoint.requestBody !== undefined) {
+      registerSchema(endpoint.requestBody.schemaName, endpoint.requestBody.schema, 'request');
     }
-    responseSchemas.set(endpoint.responseSchemaName, endpoint.responseSchema);
+    if (endpoint.responseSchemaName !== undefined && endpoint.responseSchema !== undefined) {
+      registerSchema(endpoint.responseSchemaName, endpoint.responseSchema, 'response');
+    }
 
     const pathOperations = paths[endpoint.path] ?? {};
     if (pathOperations[endpoint.method] !== undefined) {
@@ -132,17 +193,22 @@ export function buildOpenApiDocument(
     paths[endpoint.path] = pathOperations;
   }
 
-  const schemas = Object.fromEntries(
-    [...responseSchemas.entries()].map(([name, schema]) => [name, toOpenApiSchema(schema)]),
+  const componentSchemas = Object.fromEntries(
+    [...schemas.entries()].map(([name, schema]) => [name, toOpenApiSchema(schema)]),
   );
 
   return {
     openapi: '3.1.0',
-    info: { title: 'base-app API', version: '1.0.0' },
+    info: {
+      title: 'base-app API',
+      version: '1.1.0',
+      description:
+        'Compatible additive revision: adds authenticated profile and consent operations without changing existing operations.',
+    },
     servers: [{ url: '/api' }],
     paths,
     components: {
-      schemas,
+      schemas: componentSchemas,
       securitySchemes: {
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
       },
