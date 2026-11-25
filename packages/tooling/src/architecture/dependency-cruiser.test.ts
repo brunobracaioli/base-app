@@ -116,23 +116,55 @@ describe('dependency-cruiser architecture rules', () => {
       writeFixture(
         root,
         'apps/mobile/src/features/auth/api/session.ts',
-        "import { createClient } from '@supabase/supabase-js';\nvoid createClient;\n",
+        "import { createClient } from '@supabase/supabase-js';\nimport type { SessionPort } from '../model/auth-ports';\nvoid [createClient, {} as SessionPort];\n",
+      );
+      writeFixture(
+        root,
+        'apps/mobile/src/shared/api-client/api-client.ts',
+        'export type ApiClient = {};\n',
+      );
+      writeFixture(
+        root,
+        'apps/mobile/src/shared/api-client/api-client.test.ts',
+        "import { createApiClient } from './api-client';\nvoid createApiClient;\n",
       );
       writeFixture(
         root,
         'apps/mobile/src/composition/extension-api.ts',
-        'export const installExtensionApi = (): void => {};\n',
+        'export const installExtensionApi = (): void => {};\nexport const getConfiguredExtensionApi = (): null => null;\n',
       );
       writeFixture(
         root,
         'apps/mobile/src/features/auth/model/auth-ports.ts',
         'export type SessionPort = {};\n',
       );
-      writeFixture(root, 'apps/mobile/src/extensions/api.ts', 'export const extensionAuth = {};\n');
+      writeFixture(
+        root,
+        'apps/mobile/src/extensions/api.ts',
+        "import { getConfiguredExtensionApi } from '../composition/extension-api';\nimport type { SessionPort } from '../features/auth/model/auth-ports';\nimport type { ApiClient } from '../shared/api-client/api-client';\nvoid ({} as SessionPort | ApiClient);\nexport const extensionAuth = getConfiguredExtensionApi;\n",
+      );
+      const appProvidersPath = 'apps/mobile/src/features/shell/ui/app-providers.tsx';
+      writeFixture(
+        root,
+        appProvidersPath,
+        `import { installExtensionApi } from '${importPath(appProvidersPath, 'apps/mobile/src/composition/extension-api.ts')}';\nimport type { SessionPort } from '${importPath(appProvidersPath, 'apps/mobile/src/features/auth/model/auth-ports.ts')}';\nimport type { ApiClient } from '${importPath(appProvidersPath, 'apps/mobile/src/shared/api-client/api-client.ts')}';\nvoid [installExtensionApi, {} as SessionPort | ApiClient];\n`,
+      );
+      const authAdapterPath = 'apps/mobile/src/features/auth/api/ports-consumer.ts';
+      writeFixture(
+        root,
+        authAdapterPath,
+        `import type { SessionPort } from '${importPath(authAdapterPath, 'apps/mobile/src/features/auth/model/auth-ports.ts')}';\nvoid ({} as SessionPort);\n`,
+      );
+      const sharedApiPath = 'apps/mobile/src/shared/api-client/index.ts';
+      writeFixture(
+        root,
+        sharedApiPath,
+        `import type { SessionPort } from '${importPath(sharedApiPath, 'apps/mobile/src/features/auth/model/auth-ports.ts')}';\nvoid ({} as SessionPort);\n`,
+      );
       writeFixture(
         root,
         'apps/mobile/src/extensions/api.test.tsx',
-        "import { installExtensionApi } from '../composition/extension-api';\nvoid installExtensionApi;\n",
+        "import { installExtensionApi } from '../composition/extension-api';\nimport type { SessionPort } from '../features/auth/model/auth-ports';\nvoid [installExtensionApi, {} as SessionPort];\n",
       );
       const extensionEntry = 'apps/mobile/src/app/(ext)/sample.tsx';
       writeFixture(
@@ -266,6 +298,27 @@ describe('dependency-cruiser architecture rules', () => {
     {
       rule: 'mobile-extensions-use-public-facade',
       entry: 'apps/mobile/src/extensions/auth-consumer.ts',
+      target: 'apps/mobile/src/features/auth/model/auth-ports.ts',
+      source: (entry: string, target: string) =>
+        `import type { SessionPort } from '${importPath(entry, target)}';\nvoid ({} as SessionPort);\n`,
+    },
+    {
+      rule: 'mobile-private-core-imports-only-from-core',
+      entry: 'apps/mobile/src/features/custom/api/private.ts',
+      target: 'apps/mobile/src/composition/extension-api.ts',
+      source: (entry: string, target: string) =>
+        `import { getConfiguredExtensionApi } from '${importPath(entry, target)}';\nvoid getConfiguredExtensionApi;\n`,
+    },
+    {
+      rule: 'mobile-private-core-imports-only-from-core',
+      entry: 'apps/mobile/src/features/custom/helpers/runtime-session.ts',
+      target: 'apps/mobile/src/composition/extension-api.ts',
+      source: (entry: string, target: string) =>
+        `import { getConfiguredExtensionApi } from '${importPath(entry, target)}';\nvoid getConfiguredExtensionApi;\n`,
+    },
+    {
+      rule: 'mobile-private-core-imports-only-from-core',
+      entry: 'apps/mobile/src/features/custom/session-access.ts',
       target: 'apps/mobile/src/features/auth/model/auth-ports.ts',
       source: (entry: string, target: string) =>
         `import type { SessionPort } from '${importPath(entry, target)}';\nvoid ({} as SessionPort);\n`,

@@ -103,6 +103,14 @@ const forbidden = [
     to: { path: '^apps/mobile/src/(?:composition/|features/auth/|shared/api-client/)' },
   },
   {
+    name: 'mobile-private-core-imports-only-from-core',
+    severity: 'error',
+    from: {
+      path: '^apps/mobile/src/(?!extensions/(?:api|registry|types)\\.ts$|extensions/api\\.test\\.tsx$|features/shell/ui/app-providers\\.tsx$|features/auth/|composition/|shared/api-client/(?:index\\.ts|api-client\\.test\\.ts)$)',
+    },
+    to: { path: '^apps/mobile/src/(?:composition/|features/auth/|shared/api-client/)' },
+  },
+  {
     name: 'supabase-client-only-in-auth',
     severity: 'error',
     from: { path: '^apps/mobile/src/(?!features/auth/)' },

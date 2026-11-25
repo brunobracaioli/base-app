@@ -354,7 +354,10 @@ Regras da composição (`src/composition/`):
   cobre;
 - rotas de extensão ficam em `src/app/(ext)/**` (arquivos novos).
 
-Nenhuma extensão importa internals de `features/` do núcleo (dependency-cruiser).
+Nenhuma extensão importa internals de `features/`, `composition/` ou `shared/api-client/` do
+núcleo (dependency-cruiser). Acesso a auth, sessão e HTTP passa por `extensions/api.ts`; só a
+fachada, `AppProviders`, os próprios módulos de composição e testes podem importar os contratos
+privados de `composition/`.
 
 ## 4. Edge cases
 
