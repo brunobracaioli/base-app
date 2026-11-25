@@ -52,10 +52,10 @@ a lista de arquivos permitidos") quebra.
   encoder não são prova de configuração no painel. `db.pooler.enabled`, portas locais,
   `[local_smtp]` e `[realtime]` não têm contraparte hospedada. `[auth.saml]` não existe no schema
   TOML dessa versão. O código-fonte do CLI é evidência de capacidade declarada, não de aplicação
-  em um projeto hospedado. S-TM-4 permanece pendente porque não foi disponibilizado um alvo
-  autorizado; antes da release, validar o diff em um projeto existente e registrar os controles
-  que exigem conferência manual no painel. Nunca usar `--yes` como substituto de autorização do
-  operador.
+  em um projeto hospedado. A parte local do S-TM-4 fica documentada por essa inspeção da CLI
+  pinada e pela leitura do TOML na execução local. Conforme base-app §2, o derivado valida o
+  diff num projeto autorizado e confere manualmente os controles sem encoder; isso não bloqueia
+  sozinho o código-fonte do template. Nunca usar `--yes` como substituto de autorização do operador.
 
 ## Alternativas consideradas
 
@@ -74,8 +74,8 @@ a lista de arquivos permitidos") quebra.
   núcleo; uma chave sobrescrita aparece no cabeçalho do gerado.
 - O gerador precisa de teste (mescla profunda, ordem, sobrescrita listada, fragmento inválido
   falha) e de uma verificação de que um fragmento não carrega segredo literal.
-- O spike S-TM-4 não foi validado contra um projeto hospedado; a versão base registra explicitamente
-  a porta de autorização e os controles locais/painel, sem afirmar que a configuração remota foi
-  aplicada.
+- S-TM-4 separa capacidade local da CLI e confirmação hospedada. Esta última pertence ao
+  checklist do derivado: alvo autorizado, diff revisado e conferência das propriedades não
+  aplicáveis pelo CLI. A versão base não afirma ter aplicado configuração remota.
 - O ponto de extensão é mais um contrato do núcleo: mudar o formato do cabeçalho ou a regra de
   precedência é mudança incompatível (ADR 0013).
