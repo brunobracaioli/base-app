@@ -25,11 +25,15 @@ export interface RenderedSupabaseConfig {
 
 const protectedFixedPaths = new Set([
   'api.enabled',
+  'db.pooler.enabled',
+  'db.pooler.pool_mode',
+  'auth.enable_signup',
   'auth.jwt_expiry',
   'auth.enable_anonymous_sign_ins',
   'auth.enable_manual_linking',
   'auth.additional_redirect_urls',
   'auth.email.secure_password_change',
+  'auth.email.enabled',
   'auth.email.double_confirm_changes',
   'auth.email.enable_confirmations',
   'auth.email.otp_length',
@@ -39,6 +43,8 @@ const protectedFixedPaths = new Set([
   'auth.rate_limit.email_sent',
   'auth.email.smtp.enabled',
   'auth.email.smtp.pass',
+  'auth.sms.enabled',
+  'auth.captcha.enabled',
   'auth.hook.before_user_created.enabled',
   'auth.hook.before_user_created.uri',
 ]);
@@ -142,9 +148,9 @@ function isProtectedPath(segments: PathSegments): boolean {
   const pathName = segments.join('.');
   if (protectedFixedPaths.has(pathName)) return true;
   if (segments[0] !== 'auth') return false;
+  if (segments[1] === 'external' && segments[2] === 'slack') return false;
   if (segments[1] === 'external' && segments.at(-1) === 'enabled') return true;
   if (segments[1] === 'mfa' && segments.at(-1) === 'enroll_enabled') return true;
-  if (segments[1] === 'saml' && segments.at(-1) === 'enabled') return true;
   if (segments[1] === 'oauth_server' && segments.at(-1) === 'enabled') return true;
   if (segments[1] === 'web3' && segments.at(-1) === 'enabled') return true;
   if (
@@ -153,10 +159,7 @@ function isProtectedPath(segments: PathSegments): boolean {
     ['enabled', 'uri'].includes(segments.at(-1) ?? '')
   )
     return true;
-  if (
-    segments[1] === 'sms' &&
-    ['enabled', 'enable_signup', 'enable_confirmations'].includes(segments.at(-1) ?? '')
-  )
+  if (segments[1] === 'sms' && ['enabled', 'enable_confirmations'].includes(segments.at(-1) ?? ''))
     return true;
   return false;
 }
@@ -372,10 +375,28 @@ export function validateSupabaseConfig(
   const auth = requiredObject(root.auth, 'auth');
   const email = requiredObject(auth.email, 'auth.email');
   const rateLimit = requiredObject(auth.rate_limit, 'auth.rate_limit');
+  const approved = new Set(approvedOverrides);
+
+  for (const legacyPath of [
+    'auth.email.enable_signup',
+    'auth.sms.enable_signup',
+    'auth.external.slack',
+    'auth.saml',
+  ]) {
+    if (getAtPath(root, legacyPath.split('.')) !== undefined) {
+      throw new SupabaseConfigError(
+        `${legacyPath} is unsupported or deprecated by the pinned Supabase CLI; remove it from TOML.`,
+      );
+    }
+  }
 
   const jwtExpiry = requiredNumber(auth.jwt_expiry, 'auth.jwt_expiry');
   if (jwtExpiry <= 0 || jwtExpiry > 900)
     throw new SupabaseConfigError('auth.jwt_expiry must be between 1 and 900 seconds.');
+
+  if (auth.enable_signup !== true)
+    throw new SupabaseConfigError('auth.enable_signup must remain true.');
+  if (email.enabled !== true) throw new SupabaseConfigError('auth.email.enabled must remain true.');
 
   for (const key of [
     'secure_password_change',
@@ -386,6 +407,27 @@ export function validateSupabaseConfig(
   }
 
   validateHttpsRedirects(auth.additional_redirect_urls);
+
+  const sms = requiredObject(auth.sms, 'auth.sms');
+  if (sms.enabled !== false) throw new SupabaseConfigError('auth.sms.enabled must remain false.');
+
+  const captcha = requiredObject(auth.captcha, 'auth.captcha');
+  if (captcha.enabled !== false && captcha.enabled !== true)
+    throw new SupabaseConfigError('auth.captcha.enabled must be an explicit boolean.');
+  if (captcha.enabled === false) {
+    if (Object.hasOwn(captcha, 'provider') || Object.hasOwn(captcha, 'secret'))
+      throw new SupabaseConfigError(
+        'auth.captcha.provider and auth.captcha.secret must be omitted when CAPTCHA is disabled.',
+      );
+  } else {
+    if (!approved.has('auth.captcha.enabled'))
+      throw new SupabaseConfigError(
+        'auth.captcha.enabled=true requires an approved allow-override marker.',
+      );
+    if (captcha.provider !== 'hcaptcha' && captcha.provider !== 'turnstile')
+      throw new SupabaseConfigError('auth.captcha.provider must be hcaptcha or turnstile.');
+    assertEnvReference(captcha.secret, 'auth.captcha.secret');
+  }
 
   const otpLength = requiredNumber(email.otp_length, 'auth.email.otp_length');
   const otpExpiry = requiredNumber(email.otp_expiry, 'auth.email.otp_expiry');
@@ -417,7 +459,6 @@ export function validateSupabaseConfig(
     );
   }
 
-  const approved = new Set(approvedOverrides);
   for (const pathName of ['auth.enable_anonymous_sign_ins', 'auth.enable_manual_linking']) {
     const current = getAtPath(root, pathName.split('.'));
     if (current === true) {
@@ -442,9 +483,17 @@ export function validateSupabaseConfig(
   validateDisabledSurface(auth.external, ['auth', 'external'], approved);
   validateDisabledSurface(auth.mfa, ['auth', 'mfa'], approved);
   validateDisabledSurface(auth.sms, ['auth', 'sms'], approved);
-  validateDisabledSurface(auth.saml, ['auth', 'saml'], approved);
   validateDisabledSurface(auth.oauth_server, ['auth', 'oauth_server'], approved);
   validateDisabledSurface(auth.web3, ['auth', 'web3'], approved);
+
+  const db = requiredObject(root.db, 'db');
+  const pooler = requiredObject(db.pooler, 'db.pooler');
+  if (pooler.enabled !== true)
+    throw new SupabaseConfigError(
+      'db.pooler.enabled must be true for the local transaction-pooler gate.',
+    );
+  if (pooler.pool_mode !== 'transaction')
+    throw new SupabaseConfigError('db.pooler.pool_mode must remain transaction.');
 
   const smtp = requiredObject(email.smtp, 'auth.email.smtp');
   if (smtp.enabled !== false && smtp.enabled !== true)

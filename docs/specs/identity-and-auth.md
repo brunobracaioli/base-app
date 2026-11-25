@@ -340,11 +340,12 @@ mão (ADR 0014).
 | `auth.jwt_expiry` | 900 | ID-N2 |
 | `auth.enable_refresh_token_rotation` | true | detecção de reuso |
 | `auth.refresh_token_reuse_interval` | 10 | tolera corrida de rede |
-| `auth.enable_signup` | true | cadastro por código e por senha |
+| `auth.enable_signup` | true | cadastro por código e por senha; mantém o contrato global de autoinscrição |
 | `auth.enable_anonymous_sign_ins` | false | não há modo visitante |
 | `auth.enable_manual_linking` | false | sem vínculo de identidades |
 | `auth.minimum_password_length` | 10 | ID-04 |
 | `auth.password_requirements` | `letters_digits` | ID-04 |
+| `auth.email.enabled` | true | provedor de e-mail ativo; junto com `auth.enable_signup`, permite cadastro por código/senha |
 | `auth.email.enable_confirmations` | true | e-mail verificado antes do primeiro login com senha |
 | `auth.email.double_confirm_changes` | true | ID-07 |
 | `auth.email.secure_password_change` | true | ID-06 |
@@ -356,14 +357,17 @@ mão (ADR 0014).
 | `auth.rate_limit.sign_in_sign_ups` | 30 por 5 min por IP | força bruta |
 | `auth.rate_limit.token_verifications` | 30 por 5 min por IP (plano B de S-AU-4: 10) | força bruta de OTP; teto também invariante |
 | `auth.hook.before_user_created.enabled` / `.uri` | `true` / `pg-functions://postgres/identity/before_user_created` | teto de 300 contas novas por hora no projeto (ID-18); a função conta `auth.users` da última hora e devolve erro 429; `execute` só para `supabase_auth_admin` |
-| `auth.external.<provedor>.enabled` | false, para todos (apple, google, github, ...) | superfície não usada; extensão liga em fragmento |
-| `auth.sms` / `auth.mfa.*.enroll_enabled` / `auth.saml.enabled` / `auth.oauth_server.enabled` / `auth.web3.*.enabled` | false | sem telefone, MFA de usuário final, SAML, servidor OAuth nem web3 (Q-AU-2) |
+| `auth.external.<provedor>.enabled` | false, para todos os provedores aceitos pela CLI, inclusive `slack_oidc` | superfície não usada; extensão liga em fragmento |
+| `auth.sms.enabled` | false | provedor SMS desligado; `auth.enable_signup` permanece true para o cadastro por e-mail |
+| `auth.mfa.*.enroll_enabled` / `auth.oauth_server.enabled` / `auth.web3.*.enabled` | false | sem MFA de usuário final, servidor OAuth ou web3 (Q-AU-2) |
+| SAML | sem chave em `config.toml` da CLI 3.4.0 | não incluir `[auth.saml]` (a CLI recusa a tabela); o estado desligado no projeto hospedado é uma conferência manual no painel antes de qualquer release |
 | `auth.sessions.timebox` / `inactivity_timeout` | `720h` / `168h` | teto de vida (30 dias) e de inatividade (7 dias) do refresh token; se o plano não permitir, vale R17 |
 | `realtime.enabled` / `storage.enabled` | false | sem Realtime nem Storage; a migration revoga `anon` e `authenticated` em `realtime` e `storage` e o pgTAP confere |
+| `db.pooler.enabled` / `pool_mode` | `true` / `transaction` em desenvolvimento local | habilita o pooler local e reproduz o modo do runtime; `enabled` e a porta são opções locais, sem projeção hospedada |
 | `db.pooler.default_pool_size` / `max_client_conn` | 15 / 200 | orçamento de conexões (base-app §3.13) |
 | `auth.rate_limit.token_refresh` | padrão do Supabase | renovação |
 | `api.enabled` | false | Data API (PostgREST) desligada; `pg_graphql` removido por migration (base-app.md §3.8) |
-| `auth.captcha` | desligado | CAPTCHA é ponto de extensão (ID-14); uma extensão o liga num fragmento de `supabase/config.d/` (ADR 0014) |
+| `auth.captcha.enabled` | false; `provider` e `secret` omitidos | CAPTCHA é ponto de extensão (ID-14); uma extensão o liga num fragmento de `supabase/config.d/` com provedor aceito (`hcaptcha` ou `turnstile`) e segredo via `env(...)` (ADR 0014) |
 
 **Invariantes do `config.toml` gerado.** O teste `pnpm supabase:config:check` roda sobre o
 arquivo gerado, no CI do núcleo e no de toda versão derivada, e falha se alguma destas regras
@@ -377,23 +381,30 @@ O gerador e o check também falham se existir `supabase/config.json` ou
 |-------|-------|
 | `api.enabled` | false |
 | `auth.jwt_expiry` | ≤ 900 |
+| `auth.email.enabled` | true; mantém o provedor de e-mail ativo. Não substitui o controle global de cadastro `auth.enable_signup` |
 | `auth.email.secure_password_change`, `double_confirm_changes`, `enable_confirmations` | true |
+| `auth.email.enable_signup`, `auth.sms.enable_signup` | proibidos: chaves depreciadas no CLI 3.4.0; usar `auth.email.enabled` e `auth.sms.enabled` |
 | `auth.additional_redirect_urls` | vazio, ou só `https://` explícito e sem curinga |
 | `auth.enable_anonymous_sign_ins`, `enable_manual_linking` | false no núcleo. Um fragmento pode ligar com `# allow-override` **somente com CAPTCHA ligado** no `config.toml` gerado (`auth.captcha.enabled = true`, `provider` e `secret = env(...)`); valor `true` com CAPTCHA desligado falha o check mesmo com o marcador. Isso amarra a ordem de implantação: o modo visitante só liga depois do CAPTCHA |
 | `auth.email.otp_length` / `otp_expiry` | ≥ 8 / ≤ 600 |
 | `auth.rate_limit.token_verifications`, `sign_in_sign_ups` | ≤ 30 por 5 min |
 | `auth.rate_limit.email_sent` | ≤ 300 por hora |
-| `auth.external.*.enabled`, MFA, SMS, SAML | false, salvo marcador de exceção |
+| `auth.external.*.enabled`, MFA, `auth.sms.enabled` | false, salvo marcador de exceção |
+| `auth.external.slack` | proibido; o identificador aceito é `auth.external.slack_oidc` |
+| `auth.saml` | proibido no arquivo da CLI 3.4.0; verificar manualmente no painel do projeto hospedado |
 | `auth.email.smtp.pass` | só `env(...)` |
 | `auth.hook.before_user_created` | presente |
+| `auth.captcha` | quando `enabled=false`, omitir `provider` e `secret`; quando ligada por uma extensão, o provedor é `hcaptcha` ou `turnstile` e o segredo é apenas `env(...)` |
+| `db.pooler.pool_mode` | `transaction`; o pooler local deve estar habilitado para S-DB-1/integration tests |
 
 Sobrescrever uma dessas chaves num fragmento sem o marcador `# allow-override: <chave>
 <motivo>` na linha anterior faz o gerador falhar; com o marcador, o gerador lista a exceção no
 cabeçalho do `config.toml` e o teste a aceita só se o novo valor continuar dentro da regra
 (ligar um provedor externo, por exemplo, é exceção legítima de extensão). As chaves com invariante
-extra são `enable_anonymous_sign_ins` e `enable_manual_linking` (exigem CAPTCHA ligado). O spike S-TM-4
-confirma se o `supabase config push` aplica todas essas chaves; as que só valem no painel
-entram no how-to de configuração, com o item de conferência.
+extra são `enable_anonymous_sign_ins` e `enable_manual_linking` (exigem CAPTCHA ligado). O CLI
+3.4.0 valida o subconjunto que representa, mas isso não prova que as mesmas chaves chegaram a um
+projeto hospedado; `config push` ainda requer um alvo autorizado e conferência do diff remoto.
+Chaves sem representação na CLI, como SAML, permanecem em uma lista de conferência manual.
 
 Notificações de segurança do Auth (aviso por e-mail quando a senha ou o e-mail muda) ficam
 ligadas se a versão do Supabase tiver o recurso (spike S-AU-3b).

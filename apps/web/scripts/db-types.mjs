@@ -14,17 +14,9 @@ const argumentsList = [
   '--include-pattern',
   '{audit,app_config,identity,ops,platform,privacy}.*',
   '--default-schema',
-  'audit',
-  '--default-schema',
-  'app_config',
-  '--default-schema',
-  'identity',
-  '--default-schema',
-  'ops',
-  '--default-schema',
-  'platform',
-  '--default-schema',
-  'privacy',
+  'public',
+  '--type-mapping',
+  JSON.stringify({ timestamp: 'string', timestamptz: 'string' }),
 ];
 const environmentFile = resolve(workspaceRoot, '.env.local');
 if (process.env.CI === undefined && existsSync(environmentFile)) {

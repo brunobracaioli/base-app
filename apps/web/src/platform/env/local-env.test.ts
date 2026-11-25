@@ -34,9 +34,7 @@ describe('loadRootLocalEnvironment', () => {
       'APP_HOST=file.example.test\nW1_LOCAL_ENV_FIXTURE=loaded\n',
     );
 
-    expect(
-      loadRootLocalEnvironment(temporaryRoot, { command: 'dev', environment: process.env }),
-    ).toBe(true);
+    expect(loadRootLocalEnvironment(temporaryRoot, { command: 'dev', environment: {} })).toBe(true);
     expect(process.env.APP_HOST).toBe('injected.example.test');
     expect(process.env.W1_LOCAL_ENV_FIXTURE).toBe('loaded');
   });
@@ -44,9 +42,9 @@ describe('loadRootLocalEnvironment', () => {
   it('returns safely when the root local env file is absent', () => {
     temporaryRoot = mkdtempSync(join(tmpdir(), 'base-app-env-'));
 
-    expect(
-      loadRootLocalEnvironment(temporaryRoot, { command: 'start', environment: process.env }),
-    ).toBe(false);
+    expect(loadRootLocalEnvironment(temporaryRoot, { command: 'start', environment: {} })).toBe(
+      false,
+    );
   });
 
   it.each([

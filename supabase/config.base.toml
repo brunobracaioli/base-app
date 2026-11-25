@@ -16,7 +16,7 @@ minimum_password_length = 10
 password_requirements = "letters_digits"
 
 [auth.email]
-enable_signup = true
+enabled = true
 enable_confirmations = true
 double_confirm_changes = true
 secure_password_change = true
@@ -80,7 +80,7 @@ enabled = false
 [auth.external.x]
 enabled = false
 
-[auth.external.slack]
+[auth.external.slack_oidc]
 enabled = false
 
 [auth.external.spotify]
@@ -93,7 +93,7 @@ enabled = false
 enabled = false
 
 [auth.sms]
-enable_signup = false
+enabled = false
 enable_confirmations = false
 
 [auth.mfa.totp]
@@ -108,9 +108,6 @@ verify_enabled = false
 enroll_enabled = false
 verify_enabled = false
 
-[auth.saml]
-enabled = false
-
 [auth.oauth_server]
 enabled = false
 
@@ -123,10 +120,11 @@ inactivity_timeout = "168h"
 
 [auth.captcha]
 enabled = false
-provider = ""
-secret = ""
 
 [db.pooler]
+enabled = true
+port = 54329
+pool_mode = "transaction"
 default_pool_size = 15
 max_client_conn = 200
 

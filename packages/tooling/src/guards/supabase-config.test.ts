@@ -26,6 +26,7 @@ enable_anonymous_sign_ins = false
 enable_manual_linking = false
 
 [auth.email]
+enabled = true
 enable_confirmations = true
 double_confirm_changes = true
 secure_password_change = true
@@ -49,21 +50,31 @@ uri = "pg-functions://postgres/identity/before_user_created"
 [auth.external.google]
 enabled = false
 
+[auth.external.slack_oidc]
+enabled = false
+
 [auth.sms]
-enable_signup = false
+enabled = false
 enable_confirmations = false
 
 [auth.mfa.totp]
 enroll_enabled = false
-
-[auth.saml]
-enabled = false
 
 [auth.oauth_server]
 enabled = false
 
 [auth.web3.solana]
 enabled = false
+
+[auth.captcha]
+enabled = false
+
+[db.pooler]
+enabled = true
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 15
+max_client_conn = 200
 `;
 
 const temporaryRoots: string[] = [];
@@ -145,11 +156,51 @@ describe('Supabase TOML generator and invariant checker', () => {
       renderSupabaseConfig(baseConfig, [{ name: '10-guest.toml', contents: noCaptcha }]),
     ).toThrow(/requires auth.captcha.enabled/);
 
-    const withCaptcha = `${noCaptcha}\n[auth.captcha]\nenabled = true\nprovider = "turnstile"\nsecret = "env(TURNSTILE_SECRET)"\n`;
+    const withCaptcha = `${noCaptcha}\n[auth.captcha]\n# allow-override: auth.captcha.enabled visitor verification\nenabled = true\nprovider = "turnstile"\nsecret = "env(TURNSTILE_SECRET)"\n`;
     const result = renderSupabaseConfig(baseConfig, [
       { name: '10-guest.toml', contents: withCaptcha },
     ]);
-    expect(result.approvedOverrides).toEqual(['auth.enable_anonymous_sign_ins']);
+    expect(result.approvedOverrides).toEqual([
+      'auth.captcha.enabled',
+      'auth.enable_anonymous_sign_ins',
+    ]);
+  });
+
+  it('rejects deprecated or unsupported Auth configuration keys', () => {
+    const fragments = [
+      '[auth.email]\nenable_signup = true\n',
+      '[auth.sms]\nenable_signup = false\n',
+      '[auth.external.slack]\nenabled = false\n',
+      '[auth.saml]\nenabled = false\n',
+    ];
+    for (const contents of fragments) {
+      expect(() =>
+        renderSupabaseConfig(baseConfig, [{ name: '10-outdated-auth.toml', contents }]),
+      ).toThrow(/unsupported or deprecated by the pinned Supabase CLI/);
+    }
+  });
+
+  it('keeps the email provider and global signup enabled, SMS disabled, and a local transaction pooler', () => {
+    const weakened = [
+      '[auth]\n# allow-override: auth.enable_signup disabled signup\nenable_signup = false\n',
+      '[auth.email]\n# allow-override: auth.email.enabled disabled email\nenabled = false\n',
+      '[auth.sms]\n# allow-override: auth.sms.enabled enable SMS\nenabled = true\n',
+      '[db.pooler]\n# allow-override: db.pooler.enabled disable local pooler\nenabled = false\n',
+      '[db.pooler]\n# allow-override: db.pooler.pool_mode session mode\npool_mode = "session"\n',
+    ];
+    for (const contents of weakened) {
+      expect(() =>
+        renderSupabaseConfig(baseConfig, [{ name: '10-weakened-auth-or-db.toml', contents }]),
+      ).toThrow(SupabaseConfigError);
+    }
+  });
+
+  it('omits unused CAPTCHA provider and secret when CAPTCHA is disabled', () => {
+    const result = renderSupabaseConfig(baseConfig, []);
+    const generated = result.text.slice(
+      result.text.indexOf('\n', result.text.indexOf('# Approved allow-override keys:')) + 1,
+    );
+    expect(parseToml(generated)).toMatchObject({ auth: { captcha: { enabled: false } } });
   });
 
   it('requires markers for redirect changes and rejects non-HTTPS or wildcard redirects', () => {
