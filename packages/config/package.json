@@ -27,7 +27,7 @@
     "build": "tsc --noEmit false --outDir dist",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run src"
+    "test": "vitest run --exclude '**/dist/**'"
   },
   "dependencies": {
     "zod": "4.6.7"
