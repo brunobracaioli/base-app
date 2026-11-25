@@ -67,3 +67,52 @@ contrário.
   fila e as chamadas de `index.ts` por HTTP autenticado. As fronteiras já estão no lugar.
 - Next.js como API traz peso que um framework só de API não teria; aceito pela simplicidade de
   um projeto Vercel só.
+
+## Spike S-TM-2 — cabeçalhos e matcher
+
+Em 2026-11-25, a versão estável mais recente no npm era `next@16.4.6` (compatível com Node 24),
+com `react@19.3.1` e `react-dom@19.3.1`. Um app temporário executado pelo runtime real do Next
+recebeu requisições HTTP em `GET /api/health`, `/`, `/w1-spike.txt` e
+`/_next/static/development/_buildManifest.js`.
+
+- Com `proxy.ts` e `matcher: '/:path*'`, os quatro caminhos executaram o proxy e receberam o
+  cabeçalho dinâmico de CSP com nonce.
+- Sem `proxy.ts`, `next.config.headers()` com `source: '/:path*'` ainda aplicou os cabeçalhos
+  estáticos, inclusive CSP, aos quatro caminhos.
+- Com ambos ativos, a CSP definida no proxy substituiu a CSP estática (uma política na resposta),
+  e os demais cabeçalhos de `next.config` permaneceram.
+
+**Decisão confirmada:** manter as três camadas deste ADR, usar `next.config` para cabeçalhos
+estáticos independentes, e usar o `proxy.ts` do Next 16 com matcher abrangente para conferência
+de host e CSP com nonce. A especificação continuará chamando o componente de borda de middleware
+como papel arquitetural; o arquivo/runtime executável é `src/proxy.ts` nesta versão do Next.
+
+**Limite da evidência:** esta foi uma verificação HTTP no servidor local de desenvolvimento. Ela
+não valida navegador, build de produção, preview hospedado ou Deployment Check.
+
+### S-TM-2 — requisições de caminho bruto
+
+Uma segunda verificação usou sockets TCP para enviar request-targets sem normalização do cliente
+HTTP (`//painel`, `/foo\\bar`, `/%2e`, `/%2e%2e/painel`, `/%2f` e `/%5c`). No runtime 16.4.6:
+
+- `//painel` e `/foo\\bar` viraram respostas `308` com `Location` antes de `proxy.ts`; a resposta
+  não recebeu nem os headers estáticos de `next.config`.
+- `/%2e` chegou ao proxy como `/` e `/%2e%2e/painel` como `/painel`, mesmo com
+  `skipProxyUrlNormalize: true` e `skipTrailingSlashRedirect: true`.
+- Os caminhos com `%2f` e `%5c` chegaram ao proxy ainda codificados.
+
+**Pendência de contrato/plataforma:** o contrato atual exige `404` para todas essas formas e
+headers em toda resposta. O runtime local comprovou que Proxy e `next.config.headers()` não
+controlam as respostas pré-proxy acima. Nenhuma camada de ingress adicional foi configurada.
+O aceite exato requer uma decisão do dono entre ajustar o contrato para a normalização/resposta
+pré-proxy observada ou introduzir um ingress anterior ao Next capaz de devolver `404` e aplicar
+headers; a implementação W1 só pode proteger os caminhos que chegam ao `proxy.ts`.
+
+### CSP com nonce e renderização dinâmica
+
+O nonce do CSP só pode corresponder aos scripts HTML quando o documento é renderizado por
+requisição. O layout raiz chama `headers()` para impedir prerenderização estática do HTML; o build
+local passou a reportar `ƒ /`. No servidor otimizado local, `headers:check` confirmou que o nonce
+da resposta CSP corresponde ao nonce dos scripts inline e que os headers estão presentes em
+health, página e asset estático. Isso é teste HTTP local; não substitui navegador nem preview
+hospedado.

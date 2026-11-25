@@ -790,8 +790,10 @@ usuário.
   com **bind parameter**. As claims enviadas são só `sub`, `role`, `aal` e `session_id` (nunca
   `user_metadata`, que o usuário edita). Políticas RLS usam `(select auth.uid())`.
 - `systemDb(<contexto>)`: transação com o papel do contexto (`identity_system`,
-  `privacy_system`, `app_config_system`, `platform_system`), cada um com grants só no próprio
-  schema, listados na migration de papéis. Papéis fora do runtime: `ops` (dono das funções de
+  `privacy_system`, `app_config_system`, `platform_system`), cada um com grants no próprio
+  schema e as exceções de auditoria já definidas em account-lifecycle-and-privacy §4.1
+  (`usage`/`insert` em `audit.events`; `privacy_system` também lê para exportação),
+  listados na migration de papéis. Papéis fora do runtime: `ops` (dono das funções de
   expurgo e pseudonimização, chamado só pelo `pg_cron` e por elas), `auth_fn_owner` (NOLOGIN,
   dono das funções `SECURITY DEFINER` que tocam `auth.*`; nunca `postgres`). O conjunto de
   grants de `auth_fn_owner` em `auth` é **fixo e listado** (nada além): `auth.users`: `select`,
@@ -812,7 +814,8 @@ usuário.
   (DDL, só no CI). Handlers de eventos que rodam na transação de outro
   contexto trocam para o papel do próprio contexto (`set_config('role', ..., true)`) e voltam
   ao terminar.
-- Papéis-grupo (NOLOGIN, sem membros no base-app), que uma extensão ganha com um `grant` na
+- Papéis-grupo (NOLOGIN, sem membros de extensão no base-app; `app_config_admin` é membro
+  dos dois grupos de escrita conforme §4.1 da spec de privacidade), que uma extensão ganha com um `grant` na
   migration dela, sem mexer em política do núcleo:
   - `audit_writer`: `usage` no schema `audit`, `insert` em `audit.events` e a política
     `events_insert_writer ... to audit_writer with check (actor_type in ('system',

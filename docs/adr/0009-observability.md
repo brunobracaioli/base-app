@@ -68,3 +68,12 @@ Troca de e-mail e de senha vão direto ao Supabase Auth, não passam pela API e 
   logar o valor renomeia o campo.
 - Versões derivadas que recebem webhooks acrescentam a remoção de headers das rotas de webhook
   no `beforeSend` do Sentry.
+
+## Compatibilidade do SDK Sentry — 2026-11-25
+
+O pin `@sentry/nextjs@11.17.0` não declara mais `sendDefaultPii` em suas opções TypeScript.
+O núcleo aplica o equivalente mais restritivo do SDK atual por `dataCollection`: desliga
+`userInfo`, cookies, headers HTTP, corpos, query strings, dados de consultas ao banco e variáveis
+locais de stack, além do filtro `beforeSend` definido acima. Sem `SENTRY_DSN`, a inicialização do
+SDK é desativada. A verificação foi de tipos/build local; nenhum evento foi enviado a um projeto
+Sentry.
