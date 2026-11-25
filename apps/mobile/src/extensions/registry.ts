@@ -113,7 +113,10 @@ export function composeMobileExtensions(
   let publicEnv: Record<string, unknown>;
   try {
     const coreEnvironment = Object.fromEntries(
-      coreKeys.flatMap((key) => (environment[key] === undefined ? [] : [[key, environment[key]]])),
+      coreKeys.flatMap((key) => {
+        const value = environment[key];
+        return value === undefined || value.trim() === '' ? [] : [[key, value]];
+      }),
     );
     publicEnv = corePublicEnvSchema.parse(coreEnvironment);
     for (const extension of extensions) {

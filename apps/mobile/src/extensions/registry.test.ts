@@ -93,3 +93,13 @@ describe('mobile extension composition', () => {
     ).toThrow(MobileExtensionError);
   });
 });
+
+it('treats blank optional core values from the env example as unconfigured', () => {
+  expect(
+    composeMobileExtensions([], {
+      EXPO_PUBLIC_API_URL: '',
+      EXPO_PUBLIC_SENTRY_DSN: '  ',
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: '',
+    }).publicEnv,
+  ).toEqual({});
+});
