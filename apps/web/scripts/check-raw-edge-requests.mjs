@@ -278,6 +278,123 @@ function outsideExtensionPath(prefix) {
     : '/__raw_edge_outside_prefix__';
 }
 
+function isProxyRejection(response) {
+  return (
+    response.status === 404 &&
+    response.bodyCode === 'edge.not_found' &&
+    response.handlingStage === 'proxy-rejection' &&
+    response.hasSecurityHeaders &&
+    response.hasRequestId
+  );
+}
+
+function isForwardedApplicationResponse(response, expectedStatus) {
+  return (
+    response.status === expectedStatus &&
+    response.handlingStage === 'proxy-forwarded' &&
+    response.hasSecurityHeaders &&
+    response.hasCspNonce
+  );
+}
+
+function checkNormalizedLocation(response, expectedPath, baseUrl) {
+  const location = response.headers.get('location');
+  if (
+    response.status !== 308 ||
+    response.handlingStage !== 'pre-proxy-normalization' ||
+    response.hasRequestId ||
+    typeof location !== 'string' ||
+    !location.startsWith('/') ||
+    location.startsWith('//') ||
+    /[\\?#\s\r\n]/.test(location) ||
+    location !== expectedPath
+  ) {
+    return false;
+  }
+
+  try {
+    const resolved = new URL(location, baseUrl);
+    return (
+      resolved.origin === baseUrl.origin &&
+      resolved.pathname === expectedPath &&
+      resolved.search === '' &&
+      resolved.hash === ''
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function checkPreProxyRedirect({
+  label,
+  requestTarget,
+  expectedLocation,
+  host,
+  destinationExpectation,
+  request,
+  baseUrl,
+}) {
+  const response = await request(requestTarget, host);
+  const locationPassed = checkNormalizedLocation(response, expectedLocation, baseUrl);
+  let destination;
+  if (locationPassed) {
+    const finalResponse = await request(expectedLocation, host);
+    const destinationPassed =
+      destinationExpectation.kind === 'edge-rejection'
+        ? isProxyRejection(finalResponse)
+        : isForwardedApplicationResponse(finalResponse, destinationExpectation.status);
+    destination = {
+      requestTarget: expectedLocation,
+      ...responseSummary(finalResponse),
+      expectation:
+        destinationExpectation.kind === 'edge-rejection'
+          ? 'edge.not_found 404 with required security headers'
+          : `forwarded application response ${destinationExpectation.status} with required security headers and nonce CSP`,
+      passed: destinationPassed,
+    };
+  }
+
+  return {
+    label,
+    host,
+    requestTarget,
+    expectedLocation,
+    ...responseSummary(response),
+    preProxyHeadersRequired: false,
+    safeNormalizedLocation: locationPassed,
+    destination,
+    passed: locationPassed && destination?.passed === true,
+  };
+}
+
+async function checkNormalizedPath({
+  label,
+  requestTarget,
+  expectedPath,
+  host,
+  expectation,
+  request,
+}) {
+  const response = await request(requestTarget, host);
+  const passed =
+    expectation.kind === 'edge-rejection'
+      ? isProxyRejection(response)
+      : isForwardedApplicationResponse(response, expectation.status);
+
+  return {
+    label,
+    host,
+    requestTarget,
+    normalizedPath: expectedPath,
+    expectation:
+      expectation.kind === 'edge-rejection'
+        ? 'edge.not_found 404 with required security headers'
+        : `forwarded application response ${expectation.status} with required security headers and nonce CSP`,
+    ...responseSummary(response),
+    passed,
+  };
+}
+
 async function run() {
   const { baseUrl, appHost, extensionHost, extensionPrefix, connectHost } = parseArguments(
     process.argv.slice(2),
@@ -296,89 +413,219 @@ async function run() {
   const unknownHost = `unknown.invalid:${port}`;
   const unknownHostResponse = await request('/api/v1/health', unknownHost);
   const unknownHostResult = responseSummary(unknownHostResponse);
-  const unknownHostPassed =
-    unknownHostResponse.status === 404 &&
-    unknownHostResponse.bodyCode === 'edge.not_found' &&
-    unknownHostResponse.hasSecurityHeaders;
+  const unknownHostPassed = isProxyRejection(unknownHostResponse);
 
-  const rawTargets = [
-    { label: 'double-leading-slash', target: '//panel' },
-    { label: 'encoded-dot', target: '/%2e' },
-    { label: 'encoded-parent', target: '/%2e%2e/panel' },
-    { label: 'encoded-parent-to-health-route', target: '/%2e%2e/api/v1/health' },
-    { label: 'encoded-slash', target: '/%2f' },
-    { label: 'encoded-backslash', target: '/%5c' },
-    { label: 'literal-backslash', target: '/foo\\bar' },
-  ];
-  const rawPathResults = [];
-  for (const item of rawTargets) {
-    const response = await request(item.target, appHost);
-    rawPathResults.push({
-      label: item.label,
-      requestTarget: item.target,
-      ...responseSummary(response),
-      contractSatisfied: response.status === 404 && response.hasSecurityHeaders,
-    });
+  const preProxyRedirects = [];
+  for (const item of [
+    {
+      label: 'double-leading-slash-to-app-path',
+      requestTarget: '//panel',
+      expectedLocation: '/panel',
+      host: appHost,
+      destinationExpectation: { kind: 'forwarded-application', status: 404 },
+    },
+    {
+      label: 'literal-backslash-to-app-path',
+      requestTarget: '/foo\\bar',
+      expectedLocation: '/foo/bar',
+      host: appHost,
+      destinationExpectation: { kind: 'forwarded-application', status: 404 },
+    },
+    {
+      label: 'double-leading-slash-to-health-on-unknown-host',
+      requestTarget: '//api/v1/health',
+      expectedLocation: '/api/v1/health',
+      host: unknownHost,
+      destinationExpectation: { kind: 'edge-rejection' },
+    },
+  ]) {
+    preProxyRedirects.push(await checkPreProxyRedirect({ ...item, request, baseUrl }));
+  }
+
+  const normalizedPaths = [];
+  for (const item of [
+    {
+      label: 'encoded-dot-to-app-root',
+      requestTarget: '/%2e',
+      expectedPath: '/',
+      host: appHost,
+      expectation: { kind: 'forwarded-application', status: 200 },
+    },
+    {
+      label: 'encoded-parent-to-app-not-found',
+      requestTarget: '/%2e%2e/panel',
+      expectedPath: '/panel',
+      host: appHost,
+      expectation: { kind: 'forwarded-application', status: 404 },
+    },
+    {
+      label: 'literal-dot-segments-to-app-not-found',
+      requestTarget: '/a/../panel',
+      expectedPath: '/panel',
+      host: appHost,
+      expectation: { kind: 'forwarded-application', status: 404 },
+    },
+    {
+      label: 'encoded-parent-to-health-on-app-host',
+      requestTarget: '/%2e%2e/api/v1/health',
+      expectedPath: '/api/v1/health',
+      host: appHost,
+      expectation: { kind: 'forwarded-application', status: 200 },
+    },
+    {
+      label: 'encoded-parent-to-health-on-unknown-host',
+      requestTarget: '/%2e%2e/api/v1/health',
+      expectedPath: '/api/v1/health',
+      host: unknownHost,
+      expectation: { kind: 'edge-rejection' },
+    },
+    {
+      label: 'encoded-slash-is-rejected-by-proxy',
+      requestTarget: '/%2f',
+      expectedPath: '/%2f',
+      host: appHost,
+      expectation: { kind: 'edge-rejection' },
+    },
+    {
+      label: 'encoded-backslash-is-rejected-by-proxy',
+      requestTarget: '/%5c',
+      expectedPath: '/%5c',
+      host: appHost,
+      expectation: { kind: 'edge-rejection' },
+    },
+  ]) {
+    normalizedPaths.push(await checkNormalizedPath({ ...item, request }));
   }
 
   let extensionPrefixIsolation;
-  let extensionPrefixPassed = true;
+  let extensionPrefixPassed = false;
   if (extensionHost !== undefined && extensionPrefix !== undefined) {
+    extensionPrefixPassed = true;
     const extensionRequestPath = extensionPath(extensionPrefix, '__raw_edge_probe__');
     const normalizedExtensionRequestPath = `/%2e%2e${extensionRequestPath}`;
+    const literalDotExtensionRequestPath = `/a/../${extensionRequestPath.slice(1)}`;
+    const caseVariantExtensionRequestPath = extensionRequestPath.toUpperCase();
     const outsidePrefixPath = outsideExtensionPath(extensionPrefix);
     const cases = [
       {
         label: 'app-host-rejects-extension-prefix',
-        target: extensionRequestPath,
+        requestTarget: extensionRequestPath,
+        expectedPath: extensionRequestPath,
         host: appHost,
         expectation: 'proxy-rejection',
       },
       {
         label: 'app-host-rejects-normalized-extension-prefix',
-        target: normalizedExtensionRequestPath,
+        requestTarget: normalizedExtensionRequestPath,
+        expectedPath: extensionRequestPath,
         host: appHost,
         expectation: 'proxy-rejection',
       },
       {
         label: 'extension-host-serves-prefix',
-        target: extensionRequestPath,
+        requestTarget: extensionRequestPath,
+        expectedPath: extensionRequestPath,
         host: extensionHost,
         expectation: 'proxy-forwarded',
       },
       {
         label: 'extension-host-serves-normalized-prefix',
-        target: normalizedExtensionRequestPath,
+        requestTarget: normalizedExtensionRequestPath,
+        expectedPath: extensionRequestPath,
+        host: extensionHost,
+        expectation: 'proxy-forwarded',
+      },
+      {
+        label: 'app-host-rejects-literal-dot-normalized-prefix',
+        requestTarget: literalDotExtensionRequestPath,
+        expectedPath: extensionRequestPath,
+        host: appHost,
+        expectation: 'proxy-rejection',
+      },
+      {
+        label: 'extension-host-serves-literal-dot-normalized-prefix',
+        requestTarget: literalDotExtensionRequestPath,
+        expectedPath: extensionRequestPath,
+        host: extensionHost,
+        expectation: 'proxy-forwarded',
+      },
+      {
+        label: 'app-host-rejects-case-normalized-prefix',
+        requestTarget: caseVariantExtensionRequestPath,
+        expectedPath: extensionRequestPath,
+        host: appHost,
+        expectation: 'proxy-rejection',
+      },
+      {
+        label: 'extension-host-serves-case-normalized-prefix',
+        requestTarget: caseVariantExtensionRequestPath,
+        expectedPath: extensionRequestPath,
         host: extensionHost,
         expectation: 'proxy-forwarded',
       },
       {
         label: 'extension-host-rejects-outside-prefix',
-        target: outsidePrefixPath,
+        requestTarget: outsidePrefixPath,
+        expectedPath: outsidePrefixPath,
         host: extensionHost,
+        expectation: 'proxy-rejection',
+      },
+      {
+        label: 'unknown-host-rejects-normalized-extension-prefix',
+        requestTarget: normalizedExtensionRequestPath,
+        expectedPath: extensionRequestPath,
+        host: unknownHost,
         expectation: 'proxy-rejection',
       },
     ];
     const results = [];
     for (const item of cases) {
-      const response = await request(item.target, item.host);
-      const summary = responseSummary(response);
+      const response = await request(item.requestTarget, item.host);
       const passed =
         item.expectation === 'proxy-rejection'
-          ? response.status === 404 &&
-            response.bodyCode === 'edge.not_found' &&
-            response.hasSecurityHeaders
-          : response.handlingStage === 'proxy-forwarded' && response.hasCspNonce;
+          ? isProxyRejection(response)
+          : isForwardedApplicationResponse(response, 404);
       extensionPrefixPassed &&= passed;
       results.push({
         label: item.label,
         host: item.host,
-        requestTarget: item.target,
+        requestTarget: item.requestTarget,
+        normalizedPath: item.expectedPath,
         expectation: item.expectation,
-        ...summary,
+        ...responseSummary(response),
         passed,
       });
     }
+
+    const rawExtensionTarget = `//${extensionRequestPath.slice(1)}`;
+    for (const item of [
+      {
+        label: 'pre-proxy-extension-prefix-on-app-host',
+        host: appHost,
+        destinationExpectation: { kind: 'edge-rejection' },
+      },
+      {
+        label: 'pre-proxy-extension-prefix-on-extension-host',
+        host: extensionHost,
+        destinationExpectation: { kind: 'forwarded-application', status: 404 },
+      },
+      {
+        label: 'pre-proxy-extension-prefix-on-unknown-host',
+        host: unknownHost,
+        destinationExpectation: { kind: 'edge-rejection' },
+      },
+    ]) {
+      const result = await checkPreProxyRedirect({
+        ...item,
+        requestTarget: rawExtensionTarget,
+        expectedLocation: extensionRequestPath,
+        request,
+        baseUrl,
+      });
+      extensionPrefixPassed &&= result.passed;
+      results.push(result);
+    }
+
     extensionPrefixIsolation = {
       status: extensionPrefixPassed ? 'passed' : 'failed',
       extensionHost,
@@ -389,15 +636,16 @@ async function run() {
     extensionPrefixIsolation = {
       status: 'not-exercised',
       reason:
-        'The base template edgeExtensions registry is empty. Pass a registered extension host and prefix to exercise this live-server check.',
+        'Pass both a registered extension host and its prefix to exercise live host/prefix isolation; this run cannot receive full acceptance without them.',
     };
   }
 
-  const hardChecksPassed =
+  const baseChecksPassed =
     appHealthPassed &&
     unknownHostPassed &&
-    rawPathResults.every((result) => result.contractSatisfied);
-  const acceptanceStatus = !hardChecksPassed
+    preProxyRedirects.every((result) => result.passed) &&
+    normalizedPaths.every((result) => result.passed);
+  const acceptanceStatus = !baseChecksPassed
     ? 'failed'
     : extensionHost === undefined
       ? 'incomplete'
@@ -417,9 +665,15 @@ async function run() {
         ...unknownHostResult,
         passed: unknownHostPassed,
       },
-      rawPathBypasses: {
-        contract: 'each request target must return 404 with all required security headers',
-        results: rawPathResults,
+      preProxyRedirects: {
+        contract:
+          'Only the documented 308 responses with an exact safe relative Location are accepted; the same-Host normalized destination must pass host/prefix checks.',
+        results: preProxyRedirects,
+      },
+      normalizedPaths: {
+        contract:
+          'Next-normalized paths must receive the destination route result on APP_HOST or edge.not_found on unknown hosts; responses handled by Proxy/application require security headers.',
+        results: normalizedPaths,
       },
       extensionPrefixIsolation,
     },

@@ -541,17 +541,28 @@ Regras:
 - `edge.ts` e `site.tsx` não importam nada de `modules/**`: `edge.ts` roda no middleware (sem
   Node) e só carrega dados.
 - Regras do middleware do núcleo sobre `edgeExtensions`:
-  - O `matcher` cobre **todos** os paths, inclusive `/_next/**` e os estáticos. O host é
-    conferido sempre e os headers de segurança vão em toda resposta.
+  - O `matcher` cobre **todos** os paths, inclusive `/_next/**` e os estáticos. Para toda
+    requisição que chega ao Proxy, o host é conferido; respostas do Proxy e da aplicação levam os
+    headers de segurança. No Next 16.4.6, normalização/redirecionamento pré-Proxy pode responder 308
+    sem esses headers; essa exceção é limitada aos destinos normalizados descritos abaixo.
   - Host desconhecido (nem `APP_HOST` nem um `hostEnv` de extensão) → 404. `APP_HOST` é
     obrigatório por ambiente, sem esquema, validado por `platform/env`. Em `VERCEL_ENV=preview`
     também valem `VERCEL_URL` e `VERCEL_BRANCH_URL`; nenhum outro host de preview.
   - Path fora dos `pathPrefixes` num host de extensão → 404; path de um `pathPrefixes` de
     extensão chegando pelo host principal → 404.
-  - **Normalização antes de comparar prefixos:** decodifica uma vez, colapsa barras duplicadas,
-    resolve `.` e `..`, compara sem diferenciar caixa. Caminho com `%2f`, `%5c`, `\`, byte nulo
-    ou `%2e` codificado → 404 em qualquer host. Teste de bypass com tabela de casos
-    (`//painel`, `/%2e%2e/painel`, `/PAINEL`, `/painel%2f`, `/a/../painel`).
+  - **Normalização antes de comparar prefixos:** para caminhos que chegam ao Proxy, decodifica uma
+    vez, colapsa barras duplicadas, resolve `.` e `..` e compara sem diferenciar caixa. O Next 16.4.6
+    pode normalizar `/%2e`, `/%2e%2e/<path>` e `/a/../<path>` antes do Proxy; a decisão final de host
+    e prefixo usa o destino que o Proxy recebe. `//<path>` e caminho com barra invertida podem gerar
+    308 pré-Proxy. Só se aceita essa resposta quando `Location` é o caminho absoluto esperado, na
+    mesma origem, sem autoridade, query ou fragmento; o teste envia uma segunda requisição ao
+    destino com o mesmo `Host` e verifica novamente o isolamento. O 308 pré-Proxy pode não ter
+    headers de segurança. Todas as respostas do Proxy/aplicação no destino precisam tê-los.
+    Destino de prefixo de extensão pelo host principal e destino de host desconhecido → 404;
+    destino de extensão só é encaminhado no host dela. `%2f`, `%5c`, barra invertida ou byte nulo
+    que chegue ao Proxy são rejeitados com 404. O checker TCP cobre `//painel`, `/%2e`,
+    `/%2e%2e/painel`, `/a/../painel`, `/PAINEL`, `/painel%2f` e barra invertida, incluindo o destino
+    no host principal, em host desconhecido e em host de extensão.
   - **CSP:** os acréscimos só valem sob o `pathPrefix` e o nonce continua. Um teste do núcleo
     recusa, em **todas** as diretivas aceitas (`script-src`, `frame-src`, `connect-src`,
     `style-src`, `img-src`), qualquer origem que não seja `https://<host>` explícito: nada de
@@ -1180,8 +1191,11 @@ Regras: testes determinísticos (relógio e gerador de ID injetados), sem rede e
       fake de painel lê pela `audit_reader` e a própria leitura fica auditada.
 - [ ] `EdgeExtension.headers`: só a allowlist de nomes e valores passa (qualquer outro faz o boot
       e o teste falharem); o header vale sob o prefixo e em qualquer host que o sirva; o `matcher`
-      cobre `/_next/**` e os estáticos; a tabela de bypass de caminho (`//`, `%2e`, `%2f`, caixa)
-      responde 404.
+      cobre `/_next/**` e os estáticos. Checker TCP: 308 pré-Proxy só passa com `Location` relativo,
+      normalizado e exatamente esperado, e o destino é reenviado com o mesmo `Host`; headers são
+      obrigatórios nas respostas do Proxy/aplicação. Destino normalizado de prefixo de extensão no
+      host principal e destino de host desconhecido dão 404; só o host da extensão encaminha o
+      prefixo dela; `%2f` e `%5c` são rejeitados pelo Proxy.
 - [ ] `publicEnv`: chave sem o prefixo (`EXPO_PUBLIC_` ou `NEXT_PUBLIC_`) ou com `SECRET`,
       `KEY_PRIVATE` ou `TOKEN` falha; site key de CAPTCHA passa; chave repetida falha.
 - [ ] `auth_fn_owner` tem exatamente os grants fixos de §3.8 (pgTAP); função de extensão
