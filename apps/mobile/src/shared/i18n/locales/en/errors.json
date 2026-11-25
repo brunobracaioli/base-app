@@ -1,0 +1,17 @@
+{
+  "generic": "The request could not be completed. Share request ID {{requestId}} with support.",
+  "requestIdHelp": "Share request ID {{requestId}} with support.",
+  "unknown": "An unexpected error occurred. Share request ID {{requestId}} with support.",
+  "auth": {
+    "token_expired": "Your session has expired.",
+    "recent_auth_required": "Sign in again to continue.",
+    "account_deleted": "This account is no longer available."
+  },
+  "client": {
+    "contract_mismatch": "The app received an unexpected response."
+  },
+  "app": {
+    "update_required": "Update the app to continue.",
+    "maintenance": "The service is under maintenance."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "generic": "Não foi possível concluir a solicitação. Informe o identificador {{requestId}} ao suporte.",
+  "requestIdHelp": "Informe o identificador {{requestId}} ao suporte.",
+  "unknown": "Ocorreu um erro inesperado. Informe o identificador {{requestId}} ao suporte.",
+  "auth": {
+    "token_expired": "Sua sessão expirou.",
+    "recent_auth_required": "Entre novamente para continuar.",
+    "account_deleted": "Esta conta não está mais disponível."
+  },
+  "client": {
+    "contract_mismatch": "O app recebeu uma resposta inesperada."
+  },
+  "app": {
+    "update_required": "Atualize o app para continuar.",
+    "maintenance": "O serviço está em manutenção."
+  }
+}

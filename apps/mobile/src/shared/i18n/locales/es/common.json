@@ -1,0 +1,9 @@
+{
+  "home": "Inicio",
+  "settings": "Configuración",
+  "loading": "Cargando",
+  "retry": "Intentar de nuevo",
+  "offline": "Sin conexión",
+  "offlineHint": "Esta acción necesita una conexión a internet.",
+  "genericError": "No se pudo completar esta acción."
+}

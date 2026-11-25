@@ -1,0 +1,10 @@
+{
+  "updateTitle": "Se requiere una actualización",
+  "updateMessage": "Instala una versión actualizada para continuar.",
+  "maintenanceTitle": "Mantenimiento",
+  "maintenanceMessage": "Inténtalo de nuevo más tarde.",
+  "termsTitle": "Términos y privacidad",
+  "termsMessage": "Los documentos legales todavía no están configurados.",
+  "extensionErrorTitle": "No se pudo verificar una extensión.",
+  "extensionErrorMessage": "Inténtalo de nuevo más tarde."
+}

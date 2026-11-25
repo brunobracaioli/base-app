@@ -1,0 +1,17 @@
+{
+  "generic": "No se pudo completar la solicitud. Comparte el identificador {{requestId}} con soporte.",
+  "requestIdHelp": "Comparte el identificador {{requestId}} con soporte.",
+  "unknown": "Ocurrió un error inesperado. Comparte el identificador {{requestId}} con soporte.",
+  "auth": {
+    "token_expired": "Tu sesión ha caducado.",
+    "recent_auth_required": "Inicia sesión de nuevo para continuar.",
+    "account_deleted": "Esta cuenta ya no está disponible."
+  },
+  "client": {
+    "contract_mismatch": "La aplicación recibió una respuesta inesperada."
+  },
+  "app": {
+    "update_required": "Actualiza la aplicación para continuar.",
+    "maintenance": "El servicio está en mantenimiento."
+  }
+}
