@@ -160,12 +160,13 @@ select throws_ok($sql$
   insert into privacy.consents (user_id, document, version)
   values ('d4000000-0000-4000-8000-000000000002', 'privacy', '2026-11-24')
 $sql$, '42501', null, 'a user cannot record consent for another user');
+with changed as (
+  update identity.profiles set display_name = 'Forged B'
+  where user_id = 'd4000000-0000-4000-8000-000000000002'
+  returning 1
+)
 select is(
-  (with changed as (
-     update identity.profiles set display_name = 'Forged B'
-     where user_id = 'd4000000-0000-4000-8000-000000000002'
-     returning 1
-   ) select count(*)::integer from changed),
+  (select count(*)::integer from changed),
   0,
   'a user cannot update another profile through row-level security'
 );
