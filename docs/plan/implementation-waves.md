@@ -4,7 +4,7 @@
 > Este arquivo é a fonte da verdade do roadmap; a tabela do [NOTES.md](../../NOTES.md)
 > espelha a coluna Status.
 
-Execução parcial de 2026-11-25: [evidências e critérios das ondas 1/2/3](waves-1-3-verification.md).
+Fundações concluídas localmente em 2026-11-25: [evidências e critérios das ondas 1/2/3](waves-1-3-verification.md).
 O aceite segue o foco de template de desenvolvimento em base-app §2: código e
 provas locais são obrigatórios; contas, implantação e publicação do app derivado
 são etapas documentadas. Falhas do banco e contratos pendentes continuam bloqueando
@@ -13,9 +13,9 @@ o aceite do código correspondente.
 | Onda | Entrega | Depende de | Paralela com | Status |
 |------|---------|------------|--------------|--------|
 | 0 | Fundação do monorepo, tooling e CI | — | — | ✅ |
-| 1 | Plataforma da API (`defineRoute`, erros, headers, logs, rate limit, idempotência, extensões) | 0 | 2, 3 | ⬜ |
-| 2 | Baseline do Supabase (config, papéis, auditoria, `pg_cron`, pgTAP, tipos Kysely) | 0 | 1, 3 | ⬜ |
-| 3 | Casca do app mobile (Expo Router, gates, i18n, tema, client, Sentry, EAS, extensões) | 0 | 1, 2 | ⬜ |
+| 1 | Plataforma da API (`defineRoute`, erros, headers, logs, rate limit, idempotência, extensões) | 0 | 2, 3 | ✅ |
+| 2 | Baseline do Supabase (config, papéis, auditoria, `pg_cron`, pgTAP, tipos Kysely) | 0 | 1, 3 | ✅ |
+| 3 | Casca do app mobile (Expo Router, gates, i18n, tema, client, Sentry, EAS, extensões) | 0 | 1, 2 | ✅ |
 | 4 | Auth na API, perfil (`/v1/me`) e consentimentos | 1, 2 | 3 | ⬜ |
 | 5 | Configuração remota e gates (app e servidor) | 3, 4 | — | ⬜ |
 | 6 | Login por e-mail no app (código, senha, redefinição, troca, sessão cifrada, termos) | 5 | — | ⬜ |

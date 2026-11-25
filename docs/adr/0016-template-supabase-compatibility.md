@@ -1,14 +1,14 @@
 # ADR 0016 — Baseline do template compatível com o Supabase
 
-- **Status:** accepted — decisão do dono em 2026-11-25; implementação e gates W2 ainda pendentes
+- **Status:** accepted — decisão do dono e validação local da W2 em 2026-11-25
 - **Data:** 2026-11-25
 - **Revisa:** ADRs 0005/0008/0013, base-app §3.8, specs de Auth/configuração/privacidade, threat model e a regra correspondente do AGENTS.md.
 
 ## Contexto
 
 O template deve ser configurável por quem clona o repositório. A baseline
-atual foi testada em Docker: o reset passa, mas o pgTAP encontra grants de
-Auth e revogações de schemas gerenciados que `postgres` não pode aplicar.
+experimental anterior foi testada em Docker: o reset passava, mas o pgTAP
+encontrou grants de Auth e revogações gerenciadas que `postgres` não podia aplicar.
 Não se trata de falta de uma credencial do operador.
 
 O Supabase documenta funções pequenas pertencentes a `postgres` como caminho
@@ -112,5 +112,5 @@ API, baseada em JWT verificado e na capacidade de purga quando ela for implement
 
 Esta decisão aprova somente o desenho e a consolidação da baseline inédita do
 template. Não autoriza alteração de banco Supabase existente, remoção de
-extensões, criação de projeto hospedado nem publicação. A onda 2 permanece
-pendente até os gates acima passarem.
+extensões, criação de projeto hospedado nem publicação. Os gates locais da onda 2 passaram; veja a matriz e os recibos em
+`docs/plan/waves-1-3-verification.md`. Isso não representa configuração ou validação hospedada.

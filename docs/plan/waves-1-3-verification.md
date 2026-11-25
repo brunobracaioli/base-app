@@ -1,138 +1,145 @@
 # Verificação das ondas 1, 2 e 3
 
-Estado em 2026-11-25: implementação parcial, sem ✅ nas três ondas. A `main`
-continua no merge da onda 0 (`cda886d`). Nenhum novo push, PR ou deploy foi feito.
+Fundação do template concluída localmente em 2026-11-25, conforme base-app §2.
+A integração está em `chore/template-foundation-integration`, na worktree
+`/tmp/app-base-template`. A `main` permanece em `cda886d`; não houve novo push,
+PR, deploy nem alteração de projeto hospedado. A v1 completa ainda depende das
+ondas 4–12.
 
-| Onda | Branch | Estado |
-| --- | --- | --- |
-| 1 | `feat/w1-api-platform` | `54e202a`; checker TCP reproduz o aceite pré-Proxy pendente |
-| 2 | `feat/w2-supabase-baseline` | Base local W1; reset, código, tipos e pooler TLS validados; pgTAP reprova a baseline de segurança |
-| 3 | `feat/w3-mobile-shell` | `96790e3` integrado; fachada em edição separada, contrato de sessão anterior pendente |
+As três ondas usaram sessões/worktrees próprias com Luna/xhigh, com revisão e
+integração centralizadas. A regra de Auth do AGENTS.md foi alterada somente na
+extensão aprovada pelo dono; o guia existente foi preservado.
 
-Cada onda usou uma sessão/worktree própria. A integração local de W2 sobre W1
-permite compilar contra as interfaces reais, sem integrar essas ondas na main.
-Após o limite de uso dos coders Luna/xhigh, o dono autorizou o gerente a
-corrigir diretamente a onda 2. Nesta continuação, novas sessões Luna/xhigh
-voltaram a executar em paralelo. A branch local
-`chore/template-foundation-integration` reúne os snapshots das três ondas,
-o guia de desenvolvimento e as propostas; não altera a `main`.
-
-O foco aprovado é o código-fonte de um template, conforme base-app §2.
-Configuração hospedada, contas e publicação ficam no checklist do derivado;
-contratos incompletos e falhas reais de segurança continuam impedindo o aceite.
-
-## Comandos e limites da evidência
+## Comandos e alcance das provas
 
 | Verificação | Resultado |
 | --- | --- |
-| Integração: instalação congelada | Passou com lockfile combinado, sem flexibilizar a política de dependências |
-| Integração: `pnpm turbo run lint typecheck test` | 17 tarefas aprovadas; 296 testes passaram e 1 exige conexão real, validada separadamente pelo harness TLS |
-| Integração: build web, arquitetura e formatação | Passaram |
-| W1 checker TCP em produção | Reprovou o aceite vigente: 308 antes do Proxy sem headers e normalização de segmentos; as cinco provas de isolamento com extensão temporária passaram |
-| W1 `pnpm ci:local` | 18 gates aprovados; inclui os 81 testes da API |
-| W1 build e HTTP em modo de produção | API, HTML e asset passaram; nonce do HTML coincide com CSP |
-| W2 instalação congelada | Passou com Node 24.22.3/pnpm 12.23.0 e política de supply chain preservada |
-| W2 `pnpm turbo run lint typecheck test` | 14 tarefas aprovadas; suíte ampliada com 10 testes da guarda SQL; 1 teste condicionado à conexão real não roda nesse comando |
-| W2 `pnpm --filter web build` | Passou |
-| W2 `pnpm architecture:check` | Passou: 149 módulos, 374 dependências |
-| W2 config gerada, invariantes e lint de migrations | Passaram; sem edição manual do `config.toml` fonte |
-| W2 `supabase db reset` | Passou com sete migrations, executadas como `postgres`, no Docker da KVM |
-| W2 `supabase test db` | Reprovou; o log registra os critérios de segurança/funcionalidade ainda não atendidos |
-| W2 `pnpm db:types` e verificação de drift | Passaram contra o banco real; arquivo regenerado manteve o mesmo SHA-256 |
-| W2 harness real pelo pooler TLS | Passou: claims, papéis, rollback, limpeza, microssegundos e auditoria atômica |
-| W3 snapshot parcial: lint, typecheck e Jest/RNTL | Passaram; 11 suítes/52 testes, incluindo campos opcionais vazios |
-| W3 Expo config, exports e prebuilds | Android/iOS passaram; não são builds EAS nem prova em dispositivo |
-| W3 worktree completa | Fachada independente implementada; 3 testes focados passaram. Teste/typecheck completos ainda falham no método `withPreviousSession`, aguardando decisão |
+| `pnpm ci:local` | 18 gates aprovados em checkout limpo; recibo vinculado ao commit `d941c41` |
+| `pnpm turbo run lint typecheck test` | 17 tarefas; 328 testes aprovados e 1 teste condicionado à conexão real |
+| `pnpm architecture:check` | Sem violações; inclui negativas para extensões mobile em `features/custom` |
+| Formatação, geração/drift OpenAPI e configuração Supabase | Passaram |
+| Lint de migrations e limites de escrita em auditoria | Passaram; uma baseline consolidada e registro Auth fechado |
+| Semgrep, Gitleaks, OSV e Zizmor | Passaram; fixture inseguro do Zizmor retorna a rejeição esperada |
+| `pnpm --filter web build` | Passou, em modo de produção |
+| Checker TCP de W1 com extensão temporária | Passou nos 13 casos de host/prefixo/destino normalizado; registro vazio não alega teste de prefixo e retorna `incomplete` por desenho |
+| `supabase start` e `supabase db reset` | Passaram na KVM isolada, como `postgres` sem superusuário |
+| `supabase test db` | 11 arquivos, 198 asserções, PASS; execução pelo helper versionado também passou |
+| Probe concorrente | 301 chamadas: 300 aprovações e uma rejeição 429; duas escritas após 19: uma confirma e outra recebe SQLSTATE 54000 |
+| GoTrue + Mailpit reais | Cadastro 200 gera usuário/reserva/mensagem; falha SMTP 500 mantém reserva sem criar usuário; Mailpit restaurado |
+| GoTrue com 300 reservas | HTTP 429; nenhum usuário, reserva ou e-mail adicional |
+| `pnpm db:types` + `git diff --exit-code` | Seis tabelas geradas do banco real; sem drift em relação aos tipos commitados |
+| Adaptador Kysely pelo pooler TLS | Prova real anterior preservada: fontes executáveis idênticas por SHA-256; bind, isolamento, rollback, microssegundos e auditoria atômica verificados |
+| Mobile: Jest/RNTL, lint e typecheck | Passaram; 12 suítes/67 testes |
+| Exports Expo Android/iOS | Passaram com a fachada final; configuração/prebuild anteriores continuam válidos, sem alteração de configuração nativa |
 
-Os recibos de `ci:local` ficam em `.artifacts/ci/` no checkout verificado. O
-recibo do harness TLS, seu código e os hashes estão em
-`.artifacts/w2-verification/`. O pgTAP usa um administrador descartável apenas
-para fixtures e para assumir os papéis sob teste; não executa as migrations
-como superusuário. Os helpers pgTAP ficam no schema temporário `test_support`.
-O comando de testes de `packages/config` exclui explicitamente `**/dist/**`,
-evitando executar novamente os testes emitidos durante o build.
+O teste de conexão condicionado não é contado como executado pela suíte unitária.
+Sua evidência é o harness real do adaptador, separado dos fakes. A comparação
+registrada mostra alteração apenas nos tipos gerados, sem mudança do código de
+conexão/auditoria. Recibo final: `.artifacts/ci/2026-11-25T19-25-59-231Z-PC7MCc/receipt.json`. Artefatos complementares ficam
+em `.artifacts/template-foundation/` na raiz do checkout principal.
 
 ## Onda 1 — critérios de aceite
 
-Caminhos abaixo relativos a `apps/web/src/platform/` na branch W1.
+Caminhos relativos a `apps/web/src/platform/`.
 
-| Critério | Prova | Estado |
+| Critério | Teste/prova | Estado |
 | --- | --- | --- |
-| Auth obrigatório por tipo | `http/define-route.type.test-d.ts` | Passou |
-| Toda rota usa defineRoute; públicas iguais ao contrato | `http/route-contract.test.ts` | Passou |
-| Registro vazio/fake e colisão de overrides | `extensions/composition.test.ts` | Passou |
-| Redaction de logs e Sentry | `observability/redaction.test.ts` | Passou |
-| Replay, chave em andamento e hash diferente | `http/define-route.test.ts`, `http/idempotency-store.test.ts` | Passou com portas falsas; lease antigo não altera o novo |
-| Erros sem internals e Retry-After | `http/define-route.test.ts` | Passou |
-| Balde global, limite de body e rotação de segredos | `http/body.test.ts`, `http/webhook-verifiers.test.ts` e pipeline | Passou |
-| Host/prefixos, CSP e registros vazios | `edge/host-policy.test.ts`, `edge/csp.test.ts` | Passou nos caminhos recebidos pelo Proxy |
-| Auditoria validada/fail-closed e subjectRef | `audit/audit.test.ts`; harness real em W2 | Passou |
-| CAPTCHA widget único | `extensions/composition.test.ts` | Passou |
-| CSP estrita D18 | `edge/csp.test.ts` | Passou |
-| Headers de extensão e tabela de bypass de caminhos | `edge/csp.test.ts`, `edge/host-policy.test.ts`, S-TM-2 | **Parcial:** Next normaliza/redireciona algumas formas antes do Proxy |
-| publicEnv restrito | `extensions/composition.test.ts` | Passou |
-| Headers independentes e exclusão sem nonce | S-TM-2, `http/security-headers.test.ts`, teste da rota account-deletion | Passou nos casos observados; exceções pré-Proxy pendentes |
-| IP compartilhado, IDs, políticas e erro do driver | Testes do pipeline/IP/rate-limit/request-id | Passou |
-| Exceção de manutenção restrita | Testes de tipo, rota e pipeline | Passou |
-| Suítes de contrato e isolamento de export | `testing/contracts/contracts.test.ts` | Passou |
+| Auth obrigatório por tipo | `http/define-route.type.test-d.ts` | ✅ |
+| Toda rota usa defineRoute; públicas iguais ao contrato | `http/route-contract.test.ts` | ✅ |
+| Extensão fake, registros vazios e colisões | `extensions/composition.test.ts` | ✅ |
+| Redaction de logs/Sentry | `observability/redaction.test.ts` | ✅ |
+| Replay, lease, chave em andamento e hash diferente | `http/define-route.test.ts`, `http/idempotency-store.test.ts` | ✅ |
+| Erros sem internals, Retry-After e falhas de políticas/driver | Testes do pipeline HTTP | ✅ |
+| Balde global, limite de body e rotação de segredos | `http/body.test.ts`, `http/webhook-verifiers.test.ts` e pipeline | ✅ |
+| Host/prefixo, CSP e listas vazias | `edge/host-policy.test.ts`, `edge/csp.test.ts` e checker TCP | ✅ |
+| Auditoria fail-closed/subjectRef/transação | `audit/audit.test.ts`, pgTAP e harness Kysely real | ✅ |
+| CAPTCHA widget único | `extensions/composition.test.ts` | ✅ |
+| CSP estrita e headers de extensão | `edge/csp.test.ts`, testes de composição | ✅ |
+| Paths proibidos ou normalizados, sem atravessar host/prefixo | Checker TCP em produção com fixture temporário, ADR 0003 | ✅ |
+| publicEnv restrito | `extensions/composition.test.ts` | ✅ |
+| Headers independentes e exclusão sem nonce | S-TM-2, `http/security-headers.test.ts`, rota account-deletion | ✅ |
+| IP compartilhado, request IDs e rate failure explícito | Testes de pipeline/IP/rate-limit/request-id | ✅ |
+| Isenção de manutenção restrita | Testes de tipo, rota e pipeline | ✅ |
+| Suítes de contrato e isolamento de export | `testing/contracts/contracts.test.ts` | ✅ |
+
+O aceite HTTP segue a decisão aprovada: respostas pré-Proxy do Next são
+identificadas separadamente; Location e destino final são validados. Não se
+alega que o Proxy recebeu a forma original que o framework normalizou.
 
 ## Onda 2 — critérios de aceite
 
-| Critério | Prova | Estado |
-| --- | --- | --- |
-| Papéis, grants, ownership e isolamento por contexto | `w2_catalog_privileges.test.sql` | **Reprovou:** privilégios gerenciados não correspondem à spec |
-| Claims com aspas/ponto e vírgula por bind | S-DB-1 e harness TLS do adaptador real | Passou |
-| Expurgo apenas de registros vencidos | `w2_ops_purge_expired.test.sql` | Passou |
-| Escritores de auditoria, negação de operator e set_setting auditado | `w2_audit.test.sql`, `w2_app_config_acceptance.test.sql` | Auditoria passou; set_setting bloqueado no acesso à contagem |
-| Config gerada, fragmentos e drift | Testes de `supabase-config` e `supabase:config:check` | Passou |
-| Grupos de auditoria e membros declarados | Catálogo contra fixtures JSON geradas | Comparação executada; associações administrativas sem SET/INHERIT são distinguidas das de execução |
-| CAS de settings e alerta de operador | `w2_app_config_acceptance.test.sql`, `w2_ops_signals.test.sql` | Sinal de operador passou; CAS bloqueado antes da escrita |
-| Leitor, RLS, allowlist, Storage/Realtime e GUC forjado | Catálogo e `w2_audit.test.sql` | Auditoria/GUC passaram; Storage e grants gerenciados reprovam |
-| Lotes/contagens/heartbeat do expurgo | `w2_ops_purge_expired.test.sql` | Passou, inclusive segundo lote e zero linhas |
-| Contas não confirmadas, todos os sinais e cadastro 301 | `w2_unconfirmed_*`, `w2_signup_hook.test.sql` | **Pendente/reprovou:** função/sinal ausentes; hook sem acesso a auth; e-mail 70/90 sem mapeamento do S-AU-4 |
-| Ator/forma/cota de settings e lease de idempotência | `w2_app_config_shape.test.sql`, `w2_app_config_quota.test.sql`, `w2_idempotency.test.sql` | Forma/idempotência passaram; cota depende do acesso de auditoria pendente |
-| Spikes registrados nos ADRs | ADR 0005 e ADR 0014 | S-DB-1 concluído localmente; S-TM-4 hospedado pendente |
+Caminhos relativos a `supabase/tests/`.
 
-Não foi acrescentado grant de auditoria nem helper de Auth para resolver uma
-decisão que o dono ainda não tomou. Perfis/consentimentos (W4) e funções de
-exclusão de conta (W9) não fazem parte desta entrega.
+| Critério | Teste/prova | Estado |
+| --- | --- | --- |
+| Papéis, ACLs, ownership, RLS e registro Auth exato | `w2_catalog_privileges.test.sql` | ✅ |
+| Claims hostis por bind, pooler e TLS | S-DB-1 e harness do adaptador real | ✅ |
+| Expurgo apenas de vencidos, lotes, zero e heartbeat | `w2_ops_purge_expired.test.sql` | ✅ |
+| Escritores de auditoria, negação de operator e grupos | `w2_audit.test.sql`, catálogo e fixtures JSON | ✅ |
+| Config gerada, fragmentos, invariantes e drift | Testes/CLI de `supabase-config` | ✅ |
+| CAS e eventos atômicos de settings | `w2_app_config_acceptance.test.sql` | ✅ |
+| Leitor, allowlist, GUC forjado e fronteiras gerenciadas | Catálogo, auditoria e fixtures privados de Storage/Realtime | ✅ |
+| Contas não confirmadas, preservação de anônimos/recentes/sem e-mail | `w2_unconfirmed_purge_acceptance.test.sql`, `w2_unconfirmed_backlog_acceptance.test.sql` | ✅ |
+| Sinais e os três agendamentos | `w2_ops_signals.test.sql`, `w2_ops_purge_expired.test.sql` | ✅ |
+| Forma/ator/cota de settings e rollback | `w2_app_config_shape.test.sql`, `w2_app_config_quota.test.sql`, aceite | ✅ |
+| Idempotência por usuário e reassunção de lease | `w2_idempotency.test.sql` | ✅ |
+| Hook, 300/301, falha posterior e concorrência 20/21 | `w2_signup_hook.test.sql`, probe concorrente e GoTrue/Mailpit reais | ✅ |
+| Spikes e tipos gerados | ADRs 0005/0014, `pnpm db:types` sem drift | ✅ |
+
+Migrations usam `postgres`; o administrador descartável só prepara fixtures e
+assume os papéis de teste, sem conceder privilégios ausentes na aplicação. O
+probe concorrente também usa os chamadores reais dentro de transações com
+`SET LOCAL`; a pré-carga de auditoria passa por `app_config.set_setting`.
+
+A baseline não instala `pg_net`; alertas ficam em `ops.alerts`. O mapeamento de
+volume de e-mail permanece no S-AU-4, conforme a revisão aprovada do ADR 0008.
+Não houve criação de projeto hospedado nem substituição de grants por
+superusuário para fazer a suíte passar.
 
 ## Onda 3 — critérios de aceite
 
-Caminhos abaixo relativos a `apps/mobile/` na branch W3.
+Caminhos relativos a `apps/mobile/`.
 
-| Critério | Prova | Estado |
+| Critério | Teste/prova | Estado |
 | --- | --- | --- |
-| Headers, rota pública sem token, refresh e tradução | `src/shared/api-client/api-client.test.ts` | Passou; inclui correlação e mensagem genérica localizada |
-| Montagem com registro vazio e extensão fake | `src/features/shell/ui/app-providers.test.tsx` | Passou |
-| CAPTCHA provider único | `src/extensions/registry.test.ts` | Passou |
-| Fachada, sessão anterior e CAPTCHA dos métodos | `src/extensions/api.test.tsx` preservado | **Parcial:** exports, CAPTCHA, resumo e ciclo de vida passaram em 3 testes focados; sessão anterior depende da decisão sobre retorno |
-| publicEnv e contexto sem sessão/tokens | Testes de registry e `types.type-test.ts` | Passou |
-| URLs externas, cleartext e ATS | Testes de URL/app config e prebuilds | Passou localmente |
-| Rotas sem mutação ao montar | Testes de arquitetura, providers e parâmetros | Passou |
-| Paridade de traduções | `src/shared/i18n/check-locale-parity.test.ts` | Passou |
-| Configuração, exports e prebuilds iOS/Android | Expo/EAS local | Passaram no snapshot; builds EAS assinados pertencem ao checklist do derivado, conforme base-app §2 |
+| Headers, rota pública, refresh e tradução | `src/shared/api-client/api-client.test.ts` | ✅ |
+| Montagem vazia e extensão fake | `src/features/shell/ui/app-providers.test.tsx` | ✅ |
+| CAPTCHA único | `src/extensions/registry.test.ts` | ✅ |
+| Fachada, resultado seguro e limpeza da sessão anterior | `src/extensions/api.test.tsx` — 15 casos, incluindo falhas e preservação da nova sessão | ✅ |
+| Sem resumo antigo e lifecycle de CAPTCHA | Regressões de troca de SessionPort, falhas/release e dispose compartilhado no teste da fachada | ✅ |
+| Extensão não acessa sessão crua | Negativas do dependency-cruiser em `features/custom`, helpers, rotas e registros; testes públicos de tipo | ✅ |
+| publicEnv e contexto sem tokens | Registry e `types.type-test.ts` | ✅ |
+| HTTPS/allowlist/ATS e rotas sem ação ao montar | URL/app config, arquitetura, providers e parâmetros | ✅ |
+| Paridade de traduções | `src/shared/i18n/check-locale-parity.test.ts` | ✅ |
+| Configuração e bundles das duas plataformas | Config/prebuild locais e exports Android/iOS | ✅ |
 
-## Decisões e ações externas
+Não foram executados EAS assinado nem testes em aparelho. Os exports registram
+warnings do resolvedor do expo-router e da configuração ainda vazia do Sentry;
+concluíram com exit 0. A implementação real do cliente secundário Supabase é da
+onda 6; a onda 3 entrega sua porta e prova o contrato com fakes.
 
-- W1: decidir a exigência para caminhos normalizados antes do Proxy; ADR 0003
-  registra a prova de 308 sem headers e perda da forma original de `%2e`.
-- W2: revisar base-app §3.8/ADR 0005 para o modelo suportado pelo Supabase atual;
-  decidir os caminhos mínimos de auditoria e o transporte de alertas. A proposta consolidada
-  no [ADR 0016](../adr/0016-template-supabase-compatibility.md) não está aprovada. Não colocar segredos de envio numa baseline reprovada.
-- W2: validar localmente a capacidade da CLI no S-TM-4; confirmação no projeto
-  hospedado é do derivado. SMTP/Mailpit local continua sem aceite enquanto o hook falhar.
-- W3: decidir os resultados inspecionáveis de `withPreviousSession<T>`. Conta,
-  projeto EAS e assinatura só serão necessários para builds do app derivado.
-- W3: oito ocorrências vulneráveis em dependências transitivas foram corrigidas
-  com pins e patch mínimo do EAS CLI (`71845f4`); o scan voltou a não apontar
-  vulnerabilidades. `5513866` corrige o boot com campos opcionais vazios. O aviso
-  do peer TypeScript do loader legado EAS é registrado no ADR 0002; a leitura
-  local da configuração e a mesclagem corrigida foram exercitadas sem conta.
-- Variáveis da API estão no `.env.example` raiz; variáveis mobile e localização
-  de `.env.local` estão em `apps/mobile/README.md` e `.env.example` da branch W3.
-  Segredos ficam no ambiente local/gerenciador, nunca no chat.
+## Decisões, problemas resolvidos e próximos passos
 
-O próximo trabalho é fechar estas três ondas. No DAG, W1/W2/W3 podem executar
-em paralelo; W4 pode se sobrepor a W3 depois de W1/W2; W8/W9 são paralelas, e
-W10 pode se sobrepor a W8 depois de W9. Nenhuma onda 4+ foi implementada aqui.
+O dono aprovou a restrição de retorno da fachada, as exceções pré-Proxy do Next
+e o ADR 0016. A investigação corrigiu o modelo de grants incompatível, a cota
+concorrente, a purga de e-mails vazios e o acesso às contagens de auditoria.
+A revisão mobile corrigiu assinaturas, resumo obsoleto, dispose duplicado e
+imports privados fora da pasta de registros. Testes de alerta agora isolam
+seus dados dentro de uma transação, sem depender do horário do cron.
+
+As antigas falhas de pgTAP e tentativas de CI permanecem como histórico nos
+artefatos; não foram convertidas em skips nem aceitas silenciosamente. A
+consolidação de migrations vale somente para o template experimental aprovado.
+Projetos com a baseline antiga precisam de um plano de atualização próprio.
+
+Não é necessária conta externa para aceitar estas fundações. Para instanciar o
+produto, siga o guia de desenvolvimento e a referência de variáveis, mantendo
+segredos em `.env.local`/gerenciador e valores vazios nos exemplos. A confirmação
+hospedada do S-TM-4, EAS/assinatura e lojas pertencem ao derivado.
+
+A limpeza confirmou zero containers, volumes e redes desta verificação; o
+diretório descartável, as credenciais e o túnel SSH foram removidos. Os demais
+workloads da KVM foram preservados.
+
+Próxima onda: **4**, depois da integração desta branch na base de trabalho. No DAG, W8/W9 podem executar em paralelo após W7; W10 pode
+se sobrepor a W8 depois de W9. Nenhuma dessas ondas foi adiantada aqui.

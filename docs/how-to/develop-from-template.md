@@ -103,8 +103,8 @@ código-fonte do template.
    `pnpm --filter web build` e `pnpm architecture:check`. Para o gate integral e seu recibo,
    siga [Executar a bateria local ou numa KVM](local-quality-gate.md).
 
-A evidência registrada para a onda 2 ainda mostra `supabase test db` reprovando critérios de
-privilégios gerenciados e acesso às contagens de auditoria; o teste hospedado S-TM-4 também está
-pendente. Consulte o [relatório de verificação das ondas 1–3](../plan/waves-1-3-verification.md)
-e `NOTES.md` antes de interpretar gates de TypeScript/web como aceite do banco. Essa pendência
-não impede entregar o código-fonte; ela impede declarar a onda 2 concluída.
+As fundações das ondas 1–3 passaram pelos gates de código e pelos testes reais de banco
+registrados no [relatório de verificação](../plan/waves-1-3-verification.md). A v1 completa
+continua dependendo das ondas seguintes. A baseline consolidada atende bancos novos do template;
+um projeto que já aplicou as migrations experimentais antigas precisa de um plano próprio.
+A confirmação de configuração hospedada do S-TM-4 permanece no checklist do derivado.
