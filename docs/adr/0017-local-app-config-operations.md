@@ -28,8 +28,11 @@ As quatro propostas de `wave-5-execution.md` foram aprovadas pelo dono.
 - `set_setting` ganha overload com os seis argumentos existentes e `p_force boolean`.
   A aridade antiga chama a nova com false. A nova preserva CAS, locks, quota, ator,
   transação atômica e registra `metadata.force`. A ação `app_config.updated` fica
-  reservada a `app_config_admin` nas policies de INSERT, bloqueando falsificações
-  pelos escritores genéricos. Migrations antigas permanecem imutáveis.
+  reservada a `app_config_admin` em policy restritiva de INSERT, bloqueando falsificações
+  por todos os escritores genéricos. Por ser um template ainda não publicado, a
+  migration recusa histórico preexistente dessa ação sob lock; esse legado não
+  tem origem comprovável e exige reconciliação explícita, sem apagar auditoria.
+  Migrations antigas permanecem imutáveis.
 - A validação SQL de versões usa comparação decimal sem o limite de int32; o helper
   antigo pode ser preservado para compatibilidade. O limite de tamanho da linha continua.
 - `app-config:set` e `app-config:rollback` produzem plano com diff e CAS por leitura
