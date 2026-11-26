@@ -72,3 +72,15 @@ barreira contra quem já detém a credencial do banco e chama SQL diretamente,
 nem contra um host executor comprometido. A credencial deve permanecer na
 máquina autorizada do operador; não será copiada para a KVM. O residual deve
 constar do ADR e do runbook. Não será criado um broker ou serviço novo nesta onda.
+
+## Aprovação e execução contínua — 2026-11-26
+
+O dono aprovou todas as propostas acima e pediu a implementação contínua de tudo o
+que falta no template, sem encerrar entre ondas. O ADR 0017 fixa as interfaces e os
+limites aprovados. W5 permanece nesta branch; ondas seguintes começam depois do
+aceite das dependências, com branches/commits separados e paralelismo interno.
+
+Plano restante: migration aditiva + testes pgTAP (leitores, force, reserva de ação,
+SemVer); CLI local assinado + testes de assinatura/CAS/rollback/timeout; polling
+foreground de 60 s + testes com relógio controlado. Gates e prova real precedem ✅.
+Contas, publicação, deploy, push e dados hospedados não fazem parte desta autorização.
