@@ -184,12 +184,12 @@ export function AppConfigProvider({
         : 'ok';
 
   useEffect(() => {
-    if (!storedConfig.ready || !isOnline || !isForeground || gate !== 'maintenance') return;
+    if (!storedConfig.ready || !isOnline || !isForeground) return;
     const timer = setInterval(() => {
       void refreshRef.current();
     }, 60_000);
     return () => clearInterval(timer);
-  }, [gate, isForeground, isOnline, storedConfig.ready]);
+  }, [isForeground, isOnline, storedConfig.ready]);
 
   const value = useMemo<AppConfigContextValue>(
     () => ({

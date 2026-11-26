@@ -5,6 +5,7 @@ import { AppState, Pressable, Text, type AppStateStatus } from 'react-native';
 import type { AppConfigResponseValue } from '@base-app/contracts';
 import type { AppConfigCache } from '../adapters/app-config-cache';
 import type { AppConfigReader } from '../api/app-config-reader';
+import { publishApiAppGate } from '../../../shared/api-client';
 import { AppConfigProvider, useAppConfig } from './app-config-provider';
 
 function makeConfig(
@@ -254,54 +255,150 @@ describe('AppConfigProvider', () => {
     await result.unmount();
   });
 
-  it('polls a live maintenance gate again after sixty seconds', async () => {
-    const remote = deferred<AppConfigResponseValue>();
-    try {
-      const maintenance = makeConfig({ maintenanceActive: true });
-      const reader: AppConfigReader = jest
-        .fn()
-        .mockReturnValueOnce(remote.promise)
-        .mockResolvedValue(maintenance);
-      const cache = makeCache(null);
-      const view = await renderAppConfig({
-        cache,
-        reader,
-        appVersion: '1.0.0',
-        platform: 'ios',
-        onlineOverride: true,
-        foregroundOverride: false,
-      });
-      await flushProviderEffects();
-
-      await act(async () => {
-        remote.resolve(maintenance);
-        await remote.promise;
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      await flushProviderEffects();
-      expect(view.getByText('maintenance/remote/false/true')).toBeTruthy();
-      expect(reader).toHaveBeenCalledTimes(1);
-
+  it.each([
+    ['update', makeConfig({ minSupported: '2.0.0' })],
+    ['maintenance', makeConfig({ maintenanceActive: true })],
+  ] as const)(
+    'polls a healthy foreground session and detects %s after sixty seconds',
+    async (expectedGate, nextConfig) => {
       jest.useFakeTimers();
-      await view.rerender(
-        appConfigTree({
+      try {
+        const reader: AppConfigReader = jest
+          .fn()
+          .mockResolvedValueOnce(makeConfig())
+          .mockResolvedValue(nextConfig);
+        const cache = makeCache(null);
+        const view = await renderAppConfig({
           cache,
           reader,
           appVersion: '1.0.0',
           platform: 'ios',
           onlineOverride: true,
           foregroundOverride: true,
+        });
+        await flushProviderEffects();
+        expect(view.getByText('ok/remote/false/true')).toBeTruthy();
+        expect(reader).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(60_000);
+        });
+        await flushProviderEffects();
+        expect(reader).toHaveBeenCalledTimes(2);
+        expect(view.getByText(`${expectedGate}/remote/false/true`)).toBeTruthy();
+        await view.unmount();
+      } finally {
+        jest.useRealTimers();
+      }
+    },
+  );
+
+  it('does not poll while offline or in the background', async () => {
+    jest.useFakeTimers();
+    try {
+      const reader: AppConfigReader = jest.fn().mockResolvedValue(makeConfig());
+      const cache = makeCache(null);
+      const offlineView = await renderAppConfig({
+        cache,
+        reader,
+        appVersion: '1.0.0',
+        platform: 'ios',
+        onlineOverride: true,
+        foregroundOverride: true,
+      });
+      await flushProviderEffects();
+      expect(reader).toHaveBeenCalledTimes(1);
+
+      await offlineView.rerender(
+        appConfigTree({
+          cache,
+          reader,
+          appVersion: '1.0.0',
+          platform: 'ios',
+          onlineOverride: false,
+          foregroundOverride: true,
         }),
       );
       await act(async () => {
         await jest.advanceTimersByTimeAsync(60_000);
       });
+      expect(reader).toHaveBeenCalledTimes(1);
+      await offlineView.unmount();
+
+      const backgroundReader: AppConfigReader = jest.fn().mockResolvedValue(makeConfig());
+      const backgroundView = await renderAppConfig({
+        cache: makeCache(null),
+        reader: backgroundReader,
+        appVersion: '1.0.0',
+        platform: 'ios',
+        onlineOverride: true,
+      });
+      await flushProviderEffects();
+      expect(backgroundReader).toHaveBeenCalledTimes(1);
+      const providerListener = appStateListeners.at(-1);
+      await act(async () => providerListener?.('background'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(60_000);
+      });
+      expect(backgroundReader).toHaveBeenCalledTimes(1);
+      await backgroundView.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('resumes foreground polling with a single timer after returning from the background', async () => {
+    jest.useFakeTimers();
+    try {
+      const reader: AppConfigReader = jest.fn().mockResolvedValue(makeConfig());
+      const view = await renderAppConfig({
+        cache: makeCache(null),
+        reader,
+        appVersion: '1.0.0',
+        platform: 'ios',
+        onlineOverride: true,
+      });
+      await flushProviderEffects();
+      expect(reader).toHaveBeenCalledTimes(1);
+      const providerListener = appStateListeners.at(-1);
+
+      await act(async () => providerListener?.('background'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(120_000);
+      });
+      expect(reader).toHaveBeenCalledTimes(1);
+
+      await act(async () => providerListener?.('active'));
+      await flushProviderEffects();
       expect(reader).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(60_000);
+      });
+      await flushProviderEffects();
+      expect(reader).toHaveBeenCalledTimes(3);
       await view.unmount();
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('keeps update gates higher priority than maintenance gates', async () => {
+    const reader: AppConfigReader = jest
+      .fn()
+      .mockResolvedValue(makeConfig({ minSupported: '2.0.0' }));
+    const view = await renderAppConfig({
+      cache: makeCache(null),
+      reader,
+      appVersion: '1.0.0',
+      platform: 'ios',
+      onlineOverride: true,
+      foregroundOverride: true,
+    });
+    await flushProviderEffects();
+
+    await act(async () => publishApiAppGate('maintenance'));
+    expect(view.getByText('update/remote/false/true')).toBeTruthy();
+    await view.unmount();
   });
 
   it('refreshes configuration when the app returns to the foreground', async () => {
