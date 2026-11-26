@@ -6,8 +6,8 @@ Onda **parcial, sem ✅** na branch `feat/w5-config-gates`, worktree
 `/tmp/app-base-w5`. A `main` local integrou a onda 4 (`c690f28`). Não houve
 push, PR, Actions, deploy ou mudança em banco hospedado.
 
-O contrato, o servidor e o planejamento puro da operação estão implementados.
-A verificação final do mobile e do conjunto ainda está em andamento. Os leitores
+Contrato, servidor, mobile e planejamento puro da operação estão implementados
+e verificados. O CI completo passou em `fa3ef94`, com recibo limpo e atestável. Os leitores
 SQL, setter com force auditado e executor com duas pessoas aguardam as decisões
 em [wave-5-execution.md](wave-5-execution.md). A aprovação não foi presumida.
 
@@ -25,11 +25,18 @@ em [wave-5-execution.md](wave-5-execution.md). A aprovação não foi presumida.
 | Tipos | `pnpm db:types`: oito tabelas reais, sem drift; TLS validado |
 | Harness real | 24 checks aprovados no código `fc22ac2`, oito escritas pela função existente, valores restaurados |
 | HTTP real | Nove checks públicos e 15 de gates aprovados; manutenção observada em 30,674 s, recuperação sem deploy |
-| CI completo e exports mobile | Aguardando fechamento do mobile |
+| Mobile | Lint/typecheck e 100 testes aprovados em 18 suítes |
+| CI completo | 18/18 gates, 496 testes + um condicionado à conexão; commit `fa3ef94` |
+| Verificação prescrita W5 | Web 48 testes/7 arquivos; mobile 26 testes/6 suítes |
+| Exports mobile | Android e iOS, bundles Hermes compilados; sem assinatura/EAS |
 
 Recibos locais ficam em `.artifacts/w5-verification/` no checkout principal:
 `live-proof-final.json`, `http-public.json`, `http-gates.json`,
-`pgtap-baseline.log`, logs de build/tipos e `cleanup.json`.
+`pgtap-baseline.log`, `final-ci-receipt.json`, logs de build/tipos/exports e `cleanup.json`.
+O recibo completo original está em
+`.artifacts/ci/2026-11-26T00-27-50-817Z-U3JE53/receipt.json` na worktree.
+Distribuição: config 7, contracts 12, web 224, mobile 100, tooling 153.
+O teste condicionado não é contado como executado; a prova real é separada.
 
 ## Critérios de aceite
 
@@ -44,7 +51,8 @@ Recibos locais ficam em `.artifacts/w5-verification/` no checkout principal:
 | URLs apenas do produto; published não exposto | Query/repositório/rotas; harness `route.published_absent` e HTTP |
 | APP_CONFIG_KEYS, schemas, função SQL e constraint coincidem | Teste do módulo e catálogo real em `db.key_allow_list_parity` |
 | Escrita só pela função, CAS, auditoria, ator e 20/21 por hora | pgTAP `w2_app_config_acceptance`, `w2_app_config_quota`, `w2_app_config_shape` e `w2_audit`; interfaces novas pendentes |
-| App offline, atualização, manutenção e cache persistido | Implementação/testes mobile em fechamento |
+| App offline, atualização, manutenção e cache persistido | `evaluate-gate.test.ts`, `app-config-cache.test.ts`, `app-config-provider.test.tsx` e telas; offline só bloqueia por atualização |
+| Timeout total, correlação, recuperação e sinais HTTP | `app-config-reader.test.ts`, `api-client.test.ts`, `app-providers.test.tsx`; limite 3 s, ID da tentativa ativa e atualização prevalece sobre manutenção |
 | Guardas de salto, published, until, diff e plano de rollback | `scripts/app-config/operation.test.ts`, 19 testes; execução real de set/rollback pendente |
 | Force auditado, rollback executável e autoaprovação recusada | Pendente de decisão e implementação; não certificado por testes do planejador |
 | Limite global de detecção no app | Pendente de esclarecimento: idade do cache não equivale ao instante de detecção em tela |
@@ -63,6 +71,18 @@ administrador descartável apenas prepara a prova e lê o token CAS; a escrita
 assume `app_config_writer` e chama a função existente. Isso não prova o CLI
 operacional ainda pendente. O teste HTTP separado executa Next/Proxy reais.
 
+A revisão corrigiu a ordem de gravação/limpeza do cache mobile, o ID de correlação
+no timeout e a precedência do gate de atualização. Três testes RNTL 14 precisavam
+aguardar `rerender()` assíncrono; a regressão passou após a correção. O guard de
+arquitetura ganhou apenas as permissões exatas de API interna para os arquivos
+do núcleo, com negativas para auth/composição e extensões. A primeira execução
+de CI detectou esse guard e a seguinte detectou formatação; ambas foram corrigidas
+e o recibo final contém todos os gates verdes.
+
+A prova real do harness foi repetida no código `fc22ac2` após seu ajuste de input.
+Depois houve somente formatação no servidor/harness; os gates finais verificam
+o código formatado. O fechamento posterior altera apenas Markdown.
+
 Não há nova migration nem spike obrigatório nesta onda até aqui. A comparação
 SQL com `int[]`, a origem confiável do rollback e o substituto do Actions estão
 na proposta; as proteções existentes não foram relaxadas.
@@ -73,6 +93,6 @@ Stack, volumes, rede, arquivos/credenciais/TLS da KVM, servidor Next local e
 túnel SSH removidos. Os demais workloads foram preservados. Os inputs privados
 da prova já não existem; outro run exige fixture novo e isolado.
 
-Concluir os gates independentes, obter as decisões registradas e terminar a
+Os gates independentes estão concluídos. Obter as decisões registradas e terminar a
 operação antes de marcar a onda 5 ou iniciar a onda 6. Nenhuma conta, segredo
 ou publicação é necessária para responder às decisões do template.

@@ -2,25 +2,30 @@
 
 ## Status atual
 
-- **Fase:** onda 5 em implementação local na branch `feat/w5-config-gates`,
-  worktree `/tmp/app-base-w5`. A `main` local integrou a onda 4 validada
-  (`c690f28`); não houve push, PR, Actions ou deploy.
-- **Concluído nesta onda:** plano de execução e correções de consistência;
-  contratos/OpenAPI 1.2.0 de configuração remota (12 testes, lint/typecheck);
-  núcleo puro de planejamento da operação (19 testes). API e mobile seguem
-  em implementação paralela com Luna/xhigh.
+- **Fase:** onda 5 parcialmente entregue na branch `feat/w5-config-gates`,
+  worktree `/tmp/app-base-w5`. API e mobile implementados e verificados;
+  operação administrativa aguarda decisões de spec. A onda permanece ⬜.
+- **Base:** `main` local integrou a onda 4 validada (`c690f28`). Nenhum push,
+  PR, GitHub Actions, deploy ou alteração de banco hospedado.
+- **Verificação:** código `fa3ef94` passou os 18 gates de `ci:local` em checkout
+  limpo: 496 testes e um teste condicionado à conexão, lint, tipos, arquitetura,
+  formato, drift de OpenAPI/config e scans. Build web e exports Hermes Android/iOS
+  passaram. [Matriz de aceite](docs/plan/wave-5-verification.md).
+- **Provas reais:** pgTAP 238 asserções/12 arquivos; oito tabelas sem drift de
+  tipos; 24 checks no harness real e 24 checks HTTP com Next/Proxy e PostgreSQL
+  TLS. Manutenção bloqueou em 30,674 s e foi revertida sem deploy.
 - **Decisões pendentes:** leitores SQL restritos/force auditado, aprovação
   assinada por duas pessoas fora de Actions, limite temporal real do mobile,
   comparação SQL de versões e origem confiável do evento de rollback.
-  Propostas em [wave-5-execution.md](docs/plan/wave-5-execution.md).
-  Nenhuma mudança de permissões ou operação pendente foi implementada.
-- **Próximo passo:** concluir e verificar as partes independentes da API/mobile;
-  após decisão do dono, implementar os adapters de operação e a migration
-  aditiva. Não iniciar a onda 6 nem marcar a onda 5 como pronta.
-- **Banco:** stack descartável na KVM criada/resetada; pgTAP da baseline passou
-  em 238 asserções/12 arquivos. TLS validado com `api_runtime`; leitura sem
-  papel negada, leitura com `app_config_system` permitida. Recursos de teste
-  ainda ativos enquanto a verificação da onda 5 está em andamento.
+  [Propostas concretas](docs/plan/wave-5-execution.md). A aprovação não foi presumida.
+- **Próximo passo:** concluir **a mesma onda 5**, após essas decisões: migration
+  aditiva, adapters e comandos executáveis de set/rollback, aprovação e testes
+  respectivos. Só depois iniciar a onda 6. O planejador puro já tem 19 testes;
+  esses testes não certificam uma operação ainda não implementada.
+- **Limpeza:** containers, volumes, rede, segredos/TLS e scratch da KVM, servidor
+  Next local e túnel SSH removidos; outros workloads preservados. Outra prova
+  real exige um fixture novo. Recibos em `.artifacts/w5-verification/` no
+  checkout principal.
 - **Histórico:** [onda 4](docs/plan/wave-4-verification.md) e
   [fundação 1–3](docs/plan/waves-1-3-verification.md) concluídas localmente.
   Contas, publicação e operação real dos derivados não são simuladas.

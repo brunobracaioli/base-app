@@ -6,6 +6,9 @@
 
 Fundações concluídas localmente em 2026-11-25: [evidências e critérios das ondas 1/2/3](waves-1-3-verification.md).
 Onda 4 concluída localmente em 2026-11-25: [aceites e evidências](wave-4-verification.md).
+Onda 5 parcialmente entregue: [verificação](wave-5-verification.md) e
+[decisões pendentes](wave-5-execution.md). API/mobile verificados; operação
+administrativa ainda incompleta. Mantém-se ⬜; retomar essa onda antes da 6.
 O aceite segue o foco de template de desenvolvimento em base-app §2: código e
 provas locais são obrigatórios; contas, implantação e publicação do app derivado
 são etapas documentadas. Falhas do banco e contratos pendentes continuam bloqueando
