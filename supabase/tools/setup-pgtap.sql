@@ -129,8 +129,8 @@ $$;
 grant usage on schema test_support to anon, authenticated, api_runtime,
   identity_system, privacy_system, app_config_system, platform_system,
   ops, app_config_admin, audit_writer, audit_operator_writer, audit_reader,
-  app_config_writer, supabase_auth_admin, service_role;
+  app_config_writer, app_config_history_reader, supabase_auth_admin, service_role;
 grant execute on all functions in schema test_support to anon, authenticated,
   api_runtime, identity_system, privacy_system, app_config_system, platform_system,
   ops, app_config_admin, audit_writer, audit_operator_writer, audit_reader,
-  app_config_writer, supabase_auth_admin, service_role;
+  app_config_writer, app_config_history_reader, supabase_auth_admin, service_role;

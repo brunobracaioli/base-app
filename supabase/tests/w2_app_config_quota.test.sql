@@ -70,8 +70,8 @@ select is(
   'the successful write brings the quota window to exactly twenty changes'
 );
 select is(
-  (select value::text from app_config.settings where key = 'maintenance'),
-  '{"active":true}',
+  (select value from app_config.settings where key = 'maintenance'),
+  '{"active":true}'::jsonb,
   'the twentieth setting change is applied'
 );
 select set_config('test.maintenance_updated_at_after_twentieth',
@@ -88,8 +88,8 @@ $sql$, '54000', null, 'the 21st setting change in one hour is rejected');
 reset role;
 
 select is(
-  (select value::text from app_config.settings where key = 'maintenance'),
-  '{"active":true}',
+  (select value from app_config.settings where key = 'maintenance'),
+  '{"active":true}'::jsonb,
   'the over-quota write leaves settings unchanged'
 );
 select is(
