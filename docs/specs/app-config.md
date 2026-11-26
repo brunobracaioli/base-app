@@ -41,7 +41,7 @@ Não funcionais:
 ### 3.1 Leitura e cache
 
 - `getAppConfig()` (consulta pública do contexto) lê `app_config.settings` com
-  `systemDb('app_config')` (papel `app_config_system`, só `select`) e guarda o resultado em
+  `systemDb('app-config')` (papel `app_config_system`, só `select`) e guarda o resultado em
   memória por 30 s.
 - Cada chave é validada por Zod. Chave inválida ou ausente: usa o último valor válido em memória;
   sem ele, o padrão seguro; emite a métrica `app_config.invalid` (alerta).

@@ -13,7 +13,7 @@ gates de versão/manutenção e operação por script.
    schemas estritos, versão numérica, resposta pública, 60/min por IP e
    falha aberta do rate limit. Testes de contrato e drift antes dos handlers.
 2. `apps/web/src/modules/app-config/**`, composição e pipeline HTTP:
-   repositório com `systemDb('app_config')`, cache 30 s, último valor válido por
+   repositório com `systemDb('app-config')`, cache 30 s, último valor válido por
    chave, fallback sem bloqueio, URLs do produto e métrica sem payload.
    Testes com relógio injetado provam expiração, concorrência, fallback,
    426/503, métodos, precedência e isenções. Integração confirma GET /v1/me 503.
