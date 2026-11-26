@@ -26,16 +26,19 @@ describe('proxy response cache hardening', () => {
     { method: 'GET', path: '/api/v1/app-config/', status: 200 },
     { method: 'GET', path: '/api/v1/me', status: 200 },
     { method: 'GET', path: '/api/v1/app-config', status: 503 },
-  ])('keeps no-store for non-success, private, or non-exact responses: $method $path $status', (input) => {
-    const response = new Response('{}', {
-      status: input.status,
-      headers: { 'Cache-Control': PUBLIC_CONFIG_CACHE },
-    });
+  ])(
+    'keeps no-store for non-success, private, or non-exact responses: $method $path $status',
+    (input) => {
+      const response = new Response('{}', {
+        status: input.status,
+        headers: { 'Cache-Control': PUBLIC_CONFIG_CACHE },
+      });
 
-    applyProxyResponseHeaders(response, { ...input, extensions: [] });
+      applyProxyResponseHeaders(response, { ...input, extensions: [] });
 
-    expect(response.headers.get('cache-control')).toBe('no-store');
-  });
+      expect(response.headers.get('cache-control')).toBe('no-store');
+    },
+  );
 
   it('keeps an extension no-store override authoritative on the public app-config path', () => {
     const extensions: readonly EdgeExtension[] = [

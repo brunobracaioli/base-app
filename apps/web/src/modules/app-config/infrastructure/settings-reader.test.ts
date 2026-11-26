@@ -25,7 +25,11 @@ function createDatabase(rows: readonly unknown[]) {
           return {
             where(column: string, operator: string, keys: readonly string[]) {
               calls.push(['where', column, operator, ...keys]);
-              return { async execute() { return rows; } };
+              return {
+                async execute() {
+                  return rows;
+                },
+              };
             },
           };
         },
@@ -73,7 +77,10 @@ describe('app-config setting reader', () => {
   it('isolates malformed, duplicate, and missing settings by key', async () => {
     const { database } = createDatabase([
       { key: 'versions', value: { ios: { minSupported: '3.0.0', latest: '2.0.0' } } },
-      { key: 'maintenance', value: { active: true, messageKey: 'invalid value', extra: 'ignored' } },
+      {
+        key: 'maintenance',
+        value: { active: true, messageKey: 'invalid value', extra: 'ignored' },
+      },
       { key: 'legal', value: { termsVersion: '2025-02-29', privacyVersion: '2026-01-01' } },
       { key: 'legal', value: { termsVersion: '2026-01-01', privacyVersion: '2026-01-02' } },
       { key: 'unknown', value: { secret: 'must not be returned' } },

@@ -94,7 +94,10 @@ describe('get public app config application query', () => {
     expect(config.versions.ios).toMatchObject({ minSupported: '0.0.0', latest: '0.0.0' });
     expect(config.versions.android).toMatchObject({ minSupported: '0.0.0', latest: '0.0.0' });
     expect(config.maintenance).toMatchObject({ active: false, platforms: ['ios', 'android'] });
-    expect(config.legal).toMatchObject({ termsVersion: '2026-01-01', privacyVersion: '2026-01-01' });
+    expect(config.legal).toMatchObject({
+      termsVersion: '2026-01-01',
+      privacyVersion: '2026-01-01',
+    });
     expect(invalidKeys).toEqual(['versions', 'maintenance', 'legal']);
   });
 

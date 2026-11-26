@@ -19,7 +19,6 @@ function findRouteFiles(directory: string): string[] {
   });
 }
 
-
 function isPublicRouteObject(definition: ts.Expression | undefined): boolean {
   if (!definition || !ts.isObjectLiteralExpression(definition)) return false;
   const auth = definition.properties.find(
@@ -60,7 +59,8 @@ function resolveRouteDefinitionObject(
     true,
   );
   for (const statement of source.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier))
+      continue;
     const bindings = statement.importClause?.namedBindings;
     if (!bindings || !ts.isNamedImports(bindings)) continue;
     if (!bindings.elements.some((element) => element.name.text === localName)) continue;

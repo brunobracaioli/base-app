@@ -55,9 +55,7 @@ export const VersionsSetting = z
   })
   .superRefine((versions, context) => {
     for (const platform of Platform.options) {
-      if (
-        compareSemVer(versions[platform].minSupported, versions[platform].latest) > 0
-      ) {
+      if (compareSemVer(versions[platform].minSupported, versions[platform].latest) > 0) {
         context.addIssue({
           code: 'custom',
           path: [platform, 'minSupported'],
@@ -71,7 +69,10 @@ export const VersionsSetting = z
 export const MaintenanceSetting = z.strictObject({
   active: z.boolean(),
   platforms: z.array(Platform).min(1).default(['ios', 'android']),
-  messageKey: z.string().regex(/^maintenance\.[a-z0-9_]{1,60}$/).default('maintenance.default'),
+  messageKey: z
+    .string()
+    .regex(/^maintenance\.[a-z0-9_]{1,60}$/)
+    .default('maintenance.default'),
   until: z.iso.datetime().nullable().default(null),
 });
 
@@ -88,39 +89,38 @@ const AppConfigPlatformVersion = z.strictObject({
 });
 
 /** Public, normalized remote configuration consumed by clients and the server gate. */
-export const AppConfigResponse = z.strictObject({
-  versions: z.strictObject({
-    ios: AppConfigPlatformVersion,
-    android: AppConfigPlatformVersion,
-  }),
-  maintenance: z.strictObject({
-    active: z.boolean(),
-    platforms: z.array(Platform),
-    messageKey: z.string(),
-    until: z.iso.datetime().nullable(),
-  }),
-  legal: z.strictObject({
-    termsVersion: IsoDate,
-    privacyVersion: IsoDate,
-    termsUrl: z.url(),
-    privacyUrl: z.url(),
-  }),
-}).superRefine((config, context) => {
-  for (const platform of Platform.options) {
-    if (
-      compareSemVer(
-        config.versions[platform].minSupported,
-        config.versions[platform].latest,
-      ) > 0
-    ) {
-      context.addIssue({
-        code: 'custom',
-        path: ['versions', platform, 'minSupported'],
-        message: 'minSupported must be less than or equal to latest.',
-      });
+export const AppConfigResponse = z
+  .strictObject({
+    versions: z.strictObject({
+      ios: AppConfigPlatformVersion,
+      android: AppConfigPlatformVersion,
+    }),
+    maintenance: z.strictObject({
+      active: z.boolean(),
+      platforms: z.array(Platform),
+      messageKey: z.string(),
+      until: z.iso.datetime().nullable(),
+    }),
+    legal: z.strictObject({
+      termsVersion: IsoDate,
+      privacyVersion: IsoDate,
+      termsUrl: z.url(),
+      privacyUrl: z.url(),
+    }),
+  })
+  .superRefine((config, context) => {
+    for (const platform of Platform.options) {
+      if (
+        compareSemVer(config.versions[platform].minSupported, config.versions[platform].latest) > 0
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['versions', platform, 'minSupported'],
+          message: 'minSupported must be less than or equal to latest.',
+        });
+      }
     }
-  }
-});
+  });
 
 export type SemVerValue = z.infer<typeof SemVer>;
 export type PlatformValue = z.infer<typeof Platform>;

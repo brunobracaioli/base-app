@@ -26,8 +26,7 @@ import type {
 } from './types';
 import type { RateLimitConfig } from './types';
 
-const PUBLIC_APP_CONFIG_CACHE_CONTROL =
-  'public, s-maxage=60, stale-while-revalidate=60' as const;
+const PUBLIC_APP_CONFIG_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=60' as const;
 const DEFAULT_BODY_LIMIT = 32 * 1024;
 const MAX_BODY_LIMIT = 1024 * 1024;
 const DEFAULT_USER_IP_LIMIT = 120;

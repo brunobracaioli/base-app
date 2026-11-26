@@ -1,8 +1,4 @@
-import {
-  LegalSetting,
-  MaintenanceSetting,
-  VersionsSetting,
-} from '@base-app/contracts';
+import { LegalSetting, MaintenanceSetting, VersionsSetting } from '@base-app/contracts';
 import type {
   LegalSettingValue,
   MaintenanceSettingValue,

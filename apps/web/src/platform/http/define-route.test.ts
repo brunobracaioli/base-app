@@ -135,9 +135,7 @@ describe('defineRoute HTTP pipeline', () => {
         output: outputSchema,
         handler: () => ({ ok: true }),
       });
-      const response = await route(
-        new Request('https://app.example/api/v1/me', { method }),
-      );
+      const response = await route(new Request('https://app.example/api/v1/me', { method }));
       expect(response.status).toBe(503);
       expect(response.headers.get('retry-after')).toBe('60');
       expect(response.headers.get('cache-control')).toBe('no-store');

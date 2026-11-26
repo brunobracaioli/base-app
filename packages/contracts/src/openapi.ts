@@ -14,7 +14,10 @@ type OpenApiResponse = {
   readonly description: string;
   readonly content?: OpenApiContent;
   readonly headers?: Readonly<
-    Record<string, { readonly description: string; readonly schema: Readonly<Record<string, unknown>> }>
+    Record<
+      string,
+      { readonly description: string; readonly schema: Readonly<Record<string, unknown>> }
+    >
   >;
 };
 

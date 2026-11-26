@@ -1,4 +1,10 @@
-import { AppConfigResponse, coreEndpoints, ConsentBody, Me, UpdateProfileBody } from '@base-app/contracts';
+import {
+  AppConfigResponse,
+  coreEndpoints,
+  ConsentBody,
+  Me,
+  UpdateProfileBody,
+} from '@base-app/contracts';
 import type { AppConfigResponseValue, MeResponse } from '@base-app/contracts';
 import * as z from 'zod';
 

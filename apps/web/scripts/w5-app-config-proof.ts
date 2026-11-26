@@ -213,10 +213,7 @@ async function readDatabaseKeyAllowLists(pool: Pool): Promise<{
   const keyConstraintRows = constraints.rows.filter((row) =>
     /\bkey\s*=\s*any\s*\(\s*array\s*\[/i.test(row.definition),
   );
-  if (
-    keyConstraintRows.length !== 1 ||
-    typeof keyConstraintRows[0]?.definition !== 'string'
-  ) {
+  if (keyConstraintRows.length !== 1 || typeof keyConstraintRows[0]?.definition !== 'string') {
     throw new ProofFailure('db.table_key_constraint_catalog');
   }
 
@@ -392,7 +389,11 @@ async function runProof(): Promise<SafeResult> {
     );
 
     activeCheck = 'db.write_budget';
-    addCheck(checks, 'db.write_budget', writeAttempts + 8 <= MAX_WRITE_ATTEMPTS && MAX_WRITE_ATTEMPTS < 20);
+    addCheck(
+      checks,
+      'db.write_budget',
+      writeAttempts + 8 <= MAX_WRITE_ATTEMPTS && MAX_WRITE_ATTEMPTS < 20,
+    );
 
     activeCheck = 'db.initial_versions';
     let current = await readSetting(adminPool, 'versions');
@@ -466,7 +467,9 @@ async function runProof(): Promise<SafeResult> {
     activeCheck = 'route.public_config';
     const iosConfigResponse = await appConfigRoute(request('/api/v1/app-config?client=ios'));
     const iosConfig = await jsonBody(iosConfigResponse);
-    const androidConfigResponse = await appConfigRoute(request('/api/v1/app-config?client=android'));
+    const androidConfigResponse = await appConfigRoute(
+      request('/api/v1/app-config?client=android'),
+    );
     const androidConfig = await jsonBody(androidConfigResponse);
     addCheck(
       checks,
@@ -614,7 +617,10 @@ async function runProof(): Promise<SafeResult> {
           response.headers.get('retry-after') === '60' &&
           responseCode(methodBodies[index]) === 'app.maintenance',
       ),
-      { status: methodResults[0]?.status, retryAfter: methodResults[0]?.headers.get('retry-after') ?? undefined },
+      {
+        status: methodResults[0]?.status,
+        retryAfter: methodResults[0]?.headers.get('retry-after') ?? undefined,
+      },
     );
 
     activeCheck = 'gate.health_exemption';
@@ -707,7 +713,9 @@ async function runProof(): Promise<SafeResult> {
           addCheck(
             checks,
             'cleanup.original_settings_restored',
-            SETTING_KEYS.every((key) => isDeepStrictEqual(restored[key].value, snapshots?.[key].value)),
+            SETTING_KEYS.every((key) =>
+              isDeepStrictEqual(restored[key].value, snapshots?.[key].value),
+            ),
           );
         } else {
           failedCheck ??= cleanupFailure;

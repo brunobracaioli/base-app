@@ -108,7 +108,10 @@ function appConfigObserver(logger: AppLogger) {
       } catch {
         // Metrics must not affect the fallback response.
       }
-      logger.error('App configuration read failed; using fallback.', safeAppConfigErrorFields(error));
+      logger.error(
+        'App configuration read failed; using fallback.',
+        safeAppConfigErrorFields(error),
+      );
     },
   };
 }
@@ -234,7 +237,6 @@ type AppConfigRuntime = Pick<CoreComposition, 'getPublicAppConfig' | 'checkAppCo
 let coreRuntime: CoreComposition | undefined;
 let fallbackAppConfigRuntime: AppConfigRuntime | undefined;
 
-
 /**
  * Environment and database setup is deferred until a core user route or fresh
  * authorization check calls this function. Build and health stay credential-free.
@@ -250,7 +252,6 @@ export function getCoreRuntime(): CoreComposition {
   coreRuntime = createCoreComposition({ database, logger });
   return coreRuntime;
 }
-
 
 function getFallbackAppConfigRuntime(error: unknown): AppConfigRuntime {
   if (fallbackAppConfigRuntime) return fallbackAppConfigRuntime;

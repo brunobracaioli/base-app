@@ -31,7 +31,9 @@ describe('app-config domain settings', () => {
     expect(compareSemanticVersions('1.10.0', '1.9.0')).toBeGreaterThan(0);
     expect(compareSemanticVersions('1.9.0', '1.10.0')).toBeLessThan(0);
     expect(compareSemanticVersions('1.0.0', '1.0.0')).toBe(0);
-    expect(compareSemanticVersions('1.9007199254740993.0', '1.9007199254740992.999')).toBeGreaterThan(0);
+    expect(
+      compareSemanticVersions('1.9007199254740993.0', '1.9007199254740992.999'),
+    ).toBeGreaterThan(0);
     expect(compareSemanticVersions('01.000.2', '1.0.2')).toBe(0);
     expect(compareSemanticVersions('1', '1.0.0')).toBe(0);
   });
@@ -146,12 +148,14 @@ describe('app-config module public setting contracts', () => {
     const keys = PUBLIC_APP_CONFIG_KEYS;
     expect(keys).toEqual(['versions', 'maintenance', 'legal']);
     expect(Object.keys(appConfigValueSchemas)).toEqual([...keys]);
-    expect(appConfigValueSchemas.versions.safeParse(SAFE_APP_CONFIG_SETTINGS.versions).success).toBe(
+    expect(
+      appConfigValueSchemas.versions.safeParse(SAFE_APP_CONFIG_SETTINGS.versions).success,
+    ).toBe(true);
+    expect(
+      appConfigValueSchemas.maintenance.safeParse(SAFE_APP_CONFIG_SETTINGS.maintenance).success,
+    ).toBe(true);
+    expect(appConfigValueSchemas.legal.safeParse(SAFE_APP_CONFIG_SETTINGS.legal).success).toBe(
       true,
     );
-    expect(appConfigValueSchemas.maintenance.safeParse(SAFE_APP_CONFIG_SETTINGS.maintenance).success).toBe(
-      true,
-    );
-    expect(appConfigValueSchemas.legal.safeParse(SAFE_APP_CONFIG_SETTINGS.legal).success).toBe(true);
   });
 });

@@ -66,7 +66,11 @@ describe('base API contracts', () => {
         .filter((endpoint) => endpoint.security.length === 0)
         .map(({ method, path }) => `${method.toUpperCase()} ${path}`),
     ).toEqual(['GET /v1/health', 'GET /v1/app-config']);
-    expect(coreEndpoints.filter((endpoint) => endpoint.path === '/v1/me').every((endpoint) => endpoint.security.length > 0)).toBe(true);
+    expect(
+      coreEndpoints
+        .filter((endpoint) => endpoint.path === '/v1/me')
+        .every((endpoint) => endpoint.security.length > 0),
+    ).toBe(true);
   });
 
   it('declares health rate-limit metadata and emits an OpenAPI 3.1 public operation', () => {
@@ -214,7 +218,9 @@ describe('base API contracts', () => {
       }),
     ).toThrow(ZodError);
     expect(() => VersionsSetting.parse({ ...validVersions, unknown: true })).toThrow(ZodError);
-    expect(() => VersionsSetting.parse({ ...validVersions, ios: { ...validVersions.ios, unknown: true } })).toThrow(ZodError);
+    expect(() =>
+      VersionsSetting.parse({ ...validVersions, ios: { ...validVersions.ios, unknown: true } }),
+    ).toThrow(ZodError);
 
     const precisionSensitive = {
       ios: { minSupported: '1.9007199254740993.0', latest: '1.9007199254740992.999' },
@@ -251,7 +257,9 @@ describe('base API contracts', () => {
   });
 
   it('declares the public app-config response, strict nested fields, and explicit cache header', () => {
-    const appConfigEndpoint = coreEndpoints.find(({ operationId }) => operationId === 'getAppConfig');
+    const appConfigEndpoint = coreEndpoints.find(
+      ({ operationId }) => operationId === 'getAppConfig',
+    );
     expect(appConfigEndpoint?.security).toEqual([]);
     expect(appConfigEndpoint?.rateLimit).toEqual({
       key: 'ip',
@@ -264,7 +272,11 @@ describe('base API contracts', () => {
     const response = {
       versions: {
         ios: { minSupported: '1.2.0', latest: '1.4.0', storeUrl: 'https://apps.example/ios' },
-        android: { minSupported: '1.2.0', latest: '1.4.0', storeUrl: 'https://apps.example/android' },
+        android: {
+          minSupported: '1.2.0',
+          latest: '1.4.0',
+          storeUrl: 'https://apps.example/android',
+        },
       },
       maintenance: {
         active: false,
@@ -303,27 +315,38 @@ describe('base API contracts', () => {
       }),
     ).toThrow(ZodError);
     expect(() =>
-      AppConfigResponse.parse({ ...response, maintenance: { ...response.maintenance, extra: true } }),
+      AppConfigResponse.parse({
+        ...response,
+        maintenance: { ...response.maintenance, extra: true },
+      }),
     ).toThrow(ZodError);
     expect(() =>
-      AppConfigResponse.parse({ ...response, legal: { ...response.legal, termsVersion: '2026-02-30' } }),
+      AppConfigResponse.parse({
+        ...response,
+        legal: { ...response.legal, termsVersion: '2026-02-30' },
+      }),
     ).toThrow(ZodError);
 
     const document = buildOpenApiDocument();
     expect(document.info.version).toBe('1.2.0');
     expect(document.paths['/v1/app-config']?.get?.security).toEqual([]);
-    expect(document.paths['/v1/app-config']?.get?.responses['200']?.headers?.['Cache-Control']).toEqual(
-      {
-        description: 'Shared cache policy for remote app configuration.',
-        schema: {
-          type: 'string',
-          const: 'public, s-maxage=60, stale-while-revalidate=60',
-        },
+    expect(
+      document.paths['/v1/app-config']?.get?.responses['200']?.headers?.['Cache-Control'],
+    ).toEqual({
+      description: 'Shared cache policy for remote app configuration.',
+      schema: {
+        type: 'string',
+        const: 'public, s-maxage=60, stale-while-revalidate=60',
       },
-    );
+    });
     expect(document.components.schemas.AppConfigResponse?.additionalProperties).toBe(false);
     expect(
-      (document.components.schemas.AppConfigResponse?.properties as Record<string, { additionalProperties?: boolean }>).versions?.additionalProperties,
+      (
+        document.components.schemas.AppConfigResponse?.properties as Record<
+          string,
+          { additionalProperties?: boolean }
+        >
+      ).versions?.additionalProperties,
     ).toBe(false);
   });
 

@@ -94,10 +94,7 @@ export function createAppConfigQuery(input: {
   function fallbackSettings(): AppConfigSettings {
     return {
       versions: copySetting('versions', lastValid.versions ?? safeSetting('versions')),
-      maintenance: copySetting(
-        'maintenance',
-        lastValid.maintenance ?? safeSetting('maintenance'),
-      ),
+      maintenance: copySetting('maintenance', lastValid.maintenance ?? safeSetting('maintenance')),
       legal: copySetting('legal', lastValid.legal ?? safeSetting('legal')),
     };
   }
