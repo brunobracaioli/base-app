@@ -1,8 +1,12 @@
 {
   "updateTitle": "Update required",
   "updateMessage": "Install an updated version to continue.",
+  "updateAction": "Update now",
   "maintenanceTitle": "Maintenance",
   "maintenanceMessage": "Please try again later.",
+  "maintenance": { "default": "Please try again later." },
+  "maintenanceUntil": "Expected service restoration: {{until}}",
+  "retryAction": "Try again",
   "termsTitle": "Terms and privacy",
   "termsMessage": "Legal documents have not been configured yet.",
   "extensionErrorTitle": "An extension could not be verified.",

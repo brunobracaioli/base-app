@@ -16,6 +16,14 @@ jest.mock('expo-crypto', () => ({
   getRandomBytes: jest.fn((length: number) => new Uint8Array(length)),
 }));
 
+jest.mock('@sentry/react-native', () => ({
+  __esModule: true,
+  init: jest.fn(),
+  addBreadcrumb: jest.fn(),
+  captureMessage: jest.fn(),
+  wrap: (component: unknown) => component,
+}));
+
 jest.mock('expo-localization', () => ({
   getLocales: jest.fn(() => [{ languageTag: 'en-US', languageCode: 'en', regionCode: 'US' }]),
 }));

@@ -23,6 +23,7 @@ import { unavailableAuthOperations, unavailableSessionPort } from '../../auth/mo
 import type { AuthOperationsPort, SessionPort } from '../../auth/model/auth-ports';
 import type { ApiClient } from '../../../shared/api-client/api-client';
 import type { MobileExtension, SessionSummary } from '../../../extensions/types';
+import { useAppConfig } from '../../app-config';
 import {
   composeMobileExtensions,
   type MobileExtensionRegistry,
@@ -186,6 +187,22 @@ export function useAppSessionSummary(): SessionSummary | null {
 
 export function useBootShellState(): BootShellState {
   return useContext(BootShellContext);
+}
+
+export function AppConfigBootBridge({ children }: React.PropsWithChildren) {
+  const current = useBootShellState();
+  const appConfig = useAppConfig();
+  const bootState = useMemo<BootShellState>(
+    () => ({
+      ...current,
+      updateRequired: appConfig.gate === 'update',
+      maintenance: appConfig.gate === 'maintenance',
+      offline: appConfig.offline,
+    }),
+    [appConfig.gate, appConfig.offline, current],
+  );
+
+  return <BootShellContext.Provider value={bootState}>{children}</BootShellContext.Provider>;
 }
 
 export function nativePlatform(): 'ios' | 'android' {

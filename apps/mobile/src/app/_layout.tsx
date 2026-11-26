@@ -4,7 +4,8 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { AppProviders } from '../features/shell/ui/app-providers';
+import { AppConfigProvider } from '../features/app-config/ui/app-config-provider';
+import { AppConfigBootBridge, AppProviders } from '../features/shell/ui/app-providers';
 import { initializeSentry } from '../shared/telemetry/sentry';
 
 initializeSentry(process.env.EXPO_PUBLIC_SENTRY_DSN);
@@ -12,12 +13,16 @@ initializeSentry(process.env.EXPO_PUBLIC_SENTRY_DSN);
 function RootLayout() {
   return (
     <AppProviders>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(gates)" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(app)" />
-        <Stack.Screen name="(ext)" />
-      </Stack>
+      <AppConfigProvider>
+        <AppConfigBootBridge>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(gates)" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(app)" />
+            <Stack.Screen name="(ext)" />
+          </Stack>
+        </AppConfigBootBridge>
+      </AppConfigProvider>
     </AppProviders>
   );
 }

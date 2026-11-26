@@ -28,6 +28,8 @@ export type ApiResponseTelemetry = {
   readonly serverRequestId?: string;
 };
 
+export type ApiAppGate = 'update' | 'maintenance';
+
 export interface ApiTelemetryPort {
   onRequest(input: ApiRequestTelemetry): void;
   onResponse(input: ApiResponseTelemetry): void;
@@ -62,6 +64,7 @@ export type ApiClientOptions = {
     readonly requestId: string;
     readonly path: string;
   }) => void;
+  readonly onAppGate?: (gate: ApiAppGate) => void;
   readonly onAccountDeleted?: () => Promise<void>;
 };
 
@@ -69,6 +72,9 @@ export type ApiRequestOptions = {
   readonly body?: unknown;
   readonly headers?: Readonly<Record<string, string>>;
   readonly idempotencyKey?: string;
+  readonly signal?: AbortSignal;
+  /** Bounds the entire request, including GET retries, backoff, and response parsing. */
+  readonly totalTimeoutMs?: number;
 };
 
 export type ApiClient = {
@@ -97,6 +103,22 @@ class FetchAttemptError extends Error {
 function serverRequestId(response: Response): string | undefined {
   const candidate = response.headers.get('X-Request-Id');
   return candidate !== null && uuidV7Pattern.test(candidate) ? candidate : undefined;
+}
+
+async function isMaintenanceGateResponse(response: Response): Promise<boolean> {
+  if (
+    response.status !== 503 ||
+    !response.headers.get('content-type')?.toLowerCase().includes('application/problem+json')
+  ) {
+    return false;
+  }
+
+  try {
+    const parsed = ProblemDetailsSchema.safeParse(await response.clone().json());
+    return parsed.success && parsed.data.code === 'app.maintenance';
+  } catch {
+    return false;
+  }
 }
 
 export function createUuidV7(now = Date.now(), bytes = Crypto.getRandomBytes(16)): string {
@@ -140,13 +162,39 @@ function retryAfterMilliseconds(
   return Math.floor(base + base * Math.max(0, Math.min(random(), 1)));
 }
 
-function defaultSleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function waitForRetry(
+  milliseconds: number,
+  signal: AbortSignal | undefined,
+  sleep: ((milliseconds: number) => Promise<void>) | undefined,
+): Promise<boolean> {
+  if (signal?.aborted === true) return Promise.resolve(false);
+
+  if (sleep === undefined) {
+    return new Promise((resolve) => {
+      const finish = (completed: boolean) => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', cancel);
+        resolve(completed);
+      };
+      const cancel = () => finish(false);
+      const timer = setTimeout(() => finish(true), milliseconds);
+      signal?.addEventListener('abort', cancel, { once: true });
+    });
+  }
+
+  if (signal === undefined) return sleep(milliseconds).then(() => true);
+
+  let removeAbortListener: () => void = () => undefined;
+  const aborted = new Promise<boolean>((resolve) => {
+    const cancel = () => resolve(false);
+    signal.addEventListener('abort', cancel, { once: true });
+    removeAbortListener = () => signal.removeEventListener('abort', cancel);
+  });
+  return Promise.race([sleep(milliseconds).then(() => true), aborted]).finally(removeAbortListener);
 }
 
 export function createApiClient(options: ApiClientOptions): ApiClient {
   let refreshPromise: Promise<string | null> | null = null;
-  const sleep = options.sleep ?? defaultSleep;
   const random = options.random ?? Math.random;
   const timeoutMs = options.timeoutMs ?? apiTimeoutMs;
   const baseUrl = options.baseUrl.replace(/\/$/, '');
@@ -185,6 +233,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     endpoint: ApiEndpoint<T>,
     requestOptions: ApiRequestOptions,
     accessTokenOverride?: string | null,
+    onRequestId?: (requestId: string) => void,
   ): Promise<ReceivedResponse> {
     if (baseUrl.length === 0) {
       const requestId = options.createRequestId();
@@ -207,8 +256,26 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         'errors.generic',
       );
     }
+    onRequestId?.(requestId);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const requestSignal = requestOptions.signal;
+    const cleanup = () => {
+      clearTimeout(timeout);
+      requestSignal?.removeEventListener('abort', abortRequest);
+    };
+    const abortRequest = () => {
+      controller.abort();
+      cleanup();
+    };
+    const timeout = setTimeout(() => {
+      controller.abort();
+      requestSignal?.removeEventListener('abort', abortRequest);
+    }, timeoutMs);
+    if (requestSignal?.aborted === true) {
+      abortRequest();
+    } else {
+      requestSignal?.addEventListener('abort', abortRequest, { once: true });
+    }
     try {
       const headers = new Headers(requestOptions.headers);
       headers.delete('Authorization');
@@ -228,12 +295,15 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
           accessTokenOverride === undefined
             ? await options.session.getAccessToken()
             : accessTokenOverride;
+        if (controller.signal.aborted) throw new FetchAttemptError(requestId);
         if (accessToken !== null) {
           headers.set('Authorization', `Bearer ${accessToken}`);
         }
       } else {
         headers.delete('Authorization');
       }
+
+      if (controller.signal.aborted) throw new FetchAttemptError(requestId);
 
       const init: RequestInit = {
         method: endpoint.method.toUpperCase(),
@@ -247,12 +317,12 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       return {
         response,
         requestId,
-        cleanup: () => clearTimeout(timeout),
+        cleanup,
         aborted: () => controller.signal.aborted,
         attemptsUsed: 1,
       };
     } catch (error) {
-      clearTimeout(timeout);
+      cleanup();
       if (error instanceof ApiRequestError) {
         throw error;
       }
@@ -265,22 +335,30 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     requestOptions: ApiRequestOptions,
     accessTokenOverride?: string | null,
     startingAttempt = 0,
+    onRequestId?: (requestId: string) => void,
   ): Promise<ReceivedResponse> {
     const retryable = endpoint.method === 'get';
     for (let attempt = startingAttempt; ; attempt += 1) {
       try {
-        const result = await fetchOnce(endpoint, requestOptions, accessTokenOverride);
+        const result = await fetchOnce(endpoint, requestOptions, accessTokenOverride, onRequestId);
+        const maintenanceGate = await isMaintenanceGateResponse(result.response);
         if (
           retryable &&
           attempt + 1 < maxGetAttempts &&
+          !maintenanceGate &&
           (result.response.status >= 500 || result.response.status === 429)
         ) {
-          try {
-            await result.response.body?.cancel().catch(() => undefined);
-          } finally {
-            result.cleanup();
+          void result.response.body?.cancel().catch(() => undefined);
+          result.cleanup();
+          if (requestOptions.signal?.aborted === true) {
+            throw createTransportError(result.requestId);
           }
-          await sleep(retryAfterMilliseconds(result.response, random, attempt));
+          const shouldRetry = await waitForRetry(
+            retryAfterMilliseconds(result.response, random, attempt),
+            requestOptions.signal,
+            options.sleep,
+          );
+          if (!shouldRetry) throw createTransportError(result.requestId);
           continue;
         }
         return { ...result, attemptsUsed: attempt + 1 };
@@ -290,10 +368,19 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         }
         const requestId =
           error instanceof FetchAttemptError ? error.requestId : options.createRequestId();
-        if (!retryable || attempt + 1 >= maxGetAttempts) {
+        if (
+          !retryable ||
+          attempt + 1 >= maxGetAttempts ||
+          requestOptions.signal?.aborted === true
+        ) {
           throw createTransportError(requestId);
         }
-        await sleep(retryAfterMilliseconds(null, random, attempt));
+        const shouldRetry = await waitForRetry(
+          retryAfterMilliseconds(null, random, attempt),
+          requestOptions.signal,
+          options.sleep,
+        );
+        if (!shouldRetry) throw createTransportError(requestId);
       }
     }
   }
@@ -339,7 +426,21 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     try {
       const { response, requestId } = result;
       if (!response.ok) {
-        throw await parseProblem(result);
+        const error = await parseProblem(result);
+        const gate =
+          error.code === 'app.update_required'
+            ? 'update'
+            : error.code === 'app.maintenance'
+              ? 'maintenance'
+              : null;
+        if (gate !== null) {
+          try {
+            options.onAppGate?.(gate);
+          } catch {
+            // A navigation subscriber must not change the API response outcome.
+          }
+        }
+        throw error;
       }
 
       if (response.status === 204 || endpoint.method === 'head') {
@@ -374,89 +475,146 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     }
   }
 
-  return {
-    async request<T>(endpoint: ApiEndpoint<T>, requestOptions: ApiRequestOptions = {}): Promise<T> {
-      let firstResult: ReceivedResponse;
-      let attemptsUsed = 0;
-      for (;;) {
-        firstResult = await fetchWithGetRetries(endpoint, requestOptions, undefined, attemptsUsed);
-        attemptsUsed = firstResult.attemptsUsed;
-        if (firstResult.response.status === 401 && endpoint.security.length > 0) {
-          break;
-        }
-        try {
-          return await finishResponse(endpoint, firstResult);
-        } catch (error) {
-          if (
-            !(error instanceof ApiRequestError) ||
-            error.status !== 0 ||
-            endpoint.method !== 'get' ||
-            attemptsUsed >= maxGetAttempts
-          ) {
-            throw error;
-          }
-          await sleep(retryAfterMilliseconds(null, random, attemptsUsed - 1));
-        }
+  async function executeRequest<T>(
+    endpoint: ApiEndpoint<T>,
+    requestOptions: ApiRequestOptions,
+    onRequestId: (requestId: string) => void,
+  ): Promise<T> {
+    let firstResult: ReceivedResponse;
+    let attemptsUsed = 0;
+    for (;;) {
+      firstResult = await fetchWithGetRetries(
+        endpoint,
+        requestOptions,
+        undefined,
+        attemptsUsed,
+        onRequestId,
+      );
+      attemptsUsed = firstResult.attemptsUsed;
+      if (firstResult.response.status === 401 && endpoint.security.length > 0) {
+        break;
       }
-
-      if (firstResult.response.status !== 401 || endpoint.security.length === 0) {
-        return finishResponse(endpoint, firstResult);
-      }
-
-      let firstProblem: ApiRequestError;
       try {
-        firstProblem = await parseProblem({
-          ...firstResult,
-          response: firstResult.response.clone(),
-        });
-      } finally {
-        await firstResult.response.body?.cancel().catch(() => undefined);
-        firstResult.cleanup();
-      }
-      if (firstProblem.code === 'auth.recent_auth_required') {
-        throw firstProblem;
-      }
-      if (firstProblem.code === 'auth.account_deleted') {
-        await options.session.signOutLocal();
-        await options.onAccountDeleted?.();
-        throw firstProblem;
-      }
-
-      let refreshedToken: string | null;
-      try {
-        refreshedToken = await sharedRefresh();
-      } catch {
-        refreshedToken = null;
-      }
-      if (refreshedToken === null) {
-        await options.session.signOutLocal();
-        throw firstProblem;
-      }
-
-      if (!isIdempotent(endpoint.method, requestOptions.idempotencyKey)) {
-        throw firstProblem;
-      }
-
-      try {
-        firstResult = await fetchOnce(endpoint, requestOptions, refreshedToken);
+        return await finishResponse(endpoint, firstResult);
       } catch (error) {
-        if (error instanceof ApiRequestError) {
+        if (
+          !(error instanceof ApiRequestError) ||
+          error.status !== 0 ||
+          endpoint.method !== 'get' ||
+          attemptsUsed >= maxGetAttempts
+        ) {
           throw error;
         }
-        const requestId =
-          error instanceof FetchAttemptError ? error.requestId : options.createRequestId();
-        throw createTransportError(requestId);
+        const shouldRetry = await waitForRetry(
+          retryAfterMilliseconds(null, random, attemptsUsed - 1),
+          requestOptions.signal,
+          options.sleep,
+        );
+        if (!shouldRetry) throw createTransportError(firstResult.requestId);
       }
-      if (firstResult.response.status === 401) {
-        try {
-          const secondProblem = await parseProblem(firstResult);
-          await options.session.signOutLocal();
-          throw secondProblem;
-        } finally {
-          firstResult.cleanup();
+    }
+
+    if (firstResult.response.status !== 401 || endpoint.security.length === 0) {
+      return finishResponse(endpoint, firstResult);
+    }
+
+    let firstProblem: ApiRequestError;
+    try {
+      firstProblem = await parseProblem({
+        ...firstResult,
+        response: firstResult.response.clone(),
+      });
+    } finally {
+      await firstResult.response.body?.cancel().catch(() => undefined);
+      firstResult.cleanup();
+    }
+    if (firstProblem.code === 'auth.recent_auth_required') {
+      throw firstProblem;
+    }
+    if (firstProblem.code === 'auth.account_deleted') {
+      await options.session.signOutLocal();
+      await options.onAccountDeleted?.();
+      throw firstProblem;
+    }
+
+    let refreshedToken: string | null;
+    try {
+      refreshedToken = await sharedRefresh();
+    } catch {
+      refreshedToken = null;
+    }
+    if (refreshedToken === null) {
+      await options.session.signOutLocal();
+      throw firstProblem;
+    }
+
+    if (!isIdempotent(endpoint.method, requestOptions.idempotencyKey)) {
+      throw firstProblem;
+    }
+
+    try {
+      firstResult = await fetchOnce(endpoint, requestOptions, refreshedToken, onRequestId);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        throw error;
+      }
+      const requestId =
+        error instanceof FetchAttemptError ? error.requestId : options.createRequestId();
+      throw createTransportError(requestId);
+    }
+    if (firstResult.response.status === 401) {
+      try {
+        const secondProblem = await parseProblem(firstResult);
+        await options.session.signOutLocal();
+        throw secondProblem;
+      } finally {
+        firstResult.cleanup();
+      }
+    }
+    return finishResponse(endpoint, firstResult);
+  }
+
+  return {
+    async request<T>(endpoint: ApiEndpoint<T>, requestOptions: ApiRequestOptions = {}): Promise<T> {
+      const { signal: externalSignal, totalTimeoutMs, ...requestInputs } = requestOptions;
+      const requestController = new AbortController();
+      let activeRequestId: string | null = null;
+      const captureRequestId = (requestId: string) => {
+        activeRequestId = requestId;
+      };
+      let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+      let removeExternalAbort: (() => void) | undefined;
+      if (externalSignal !== undefined) {
+        const abortFromCaller = () => requestController.abort();
+        if (externalSignal.aborted) {
+          requestController.abort();
+        } else {
+          externalSignal.addEventListener('abort', abortFromCaller, { once: true });
+          removeExternalAbort = () => externalSignal.removeEventListener('abort', abortFromCaller);
         }
       }
-      return finishResponse(endpoint, firstResult);
+
+      const requestScopedOptions: ApiRequestOptions = {
+        ...requestInputs,
+        signal: requestController.signal,
+      };
+      let deadline: Promise<never> | null = null;
+      if (totalTimeoutMs !== undefined && Number.isFinite(totalTimeoutMs) && totalTimeoutMs > 0) {
+        deadline = new Promise<never>((_resolve, reject) => {
+          deadlineTimer = setTimeout(() => {
+            requestController.abort();
+            reject(createTransportError(activeRequestId ?? options.createRequestId()));
+          }, totalTimeoutMs);
+        });
+      }
+
+      try {
+        const execution = executeRequest(endpoint, requestScopedOptions, captureRequestId);
+        return await (deadline === null ? execution : Promise.race([execution, deadline]));
+      } finally {
+        if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+        removeExternalAbort?.();
+      }
     },
   };
 }

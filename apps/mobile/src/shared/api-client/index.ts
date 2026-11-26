@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { unavailableSessionPort } from '../../features/auth/model/auth-ports';
 import { translateMobile } from '../i18n';
 import { addAppBreadcrumb } from '../telemetry/sentry';
+import { publishApiAppGate } from './app-gate-events';
 import {
   createApiClient,
   createUuidV7,
@@ -15,7 +16,14 @@ import {
 } from './api-client';
 
 export { ApiRequestError, createApiClient, createUuidV7 } from './api-client';
-export type { ApiClient, ApiEndpoint, ApiRequestOptions, ApiSessionPort } from './api-client';
+export type {
+  ApiAppGate,
+  ApiClient,
+  ApiEndpoint,
+  ApiRequestOptions,
+  ApiSessionPort,
+} from './api-client';
+export { publishApiAppGate, subscribeApiAppGates } from './app-gate-events';
 
 const unavailableApiSession: ApiSessionPort = {
   getAccessToken: () => unavailableSessionPort.getCurrentAccessToken(),
@@ -60,6 +68,7 @@ function getDefaultClient(): ApiClient {
         extra: { requestId },
       });
     },
+    onAppGate: publishApiAppGate,
   });
   return defaultClient;
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 
-import { GateReservedScreen } from '../../features/shell/ui/screens';
+import { UpdateGateScreen as AppConfigUpdateGateScreen } from '../../features/app-config/ui/app-config-gate-screens';
 
-export default function UpdateGateScreen() {
-  return <GateReservedScreen titleKey="updateTitle" messageKey="updateMessage" />;
+export default function UpdateGateScreenRoute() {
+  return <AppConfigUpdateGateScreen />;
 }

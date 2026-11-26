@@ -1,4 +1,4 @@
-import { coreEndpoints, ProblemDetailsSchema } from '@base-app/contracts';
+import { AppConfigResponse, coreEndpoints, ProblemDetailsSchema } from '@base-app/contracts';
 import { createMobileI18n, setActiveMobileI18n, translateMobile } from '../i18n';
 import { createApiClient, createUuidV7, ApiRequestError } from './api-client';
 
@@ -170,6 +170,93 @@ describe('typed API client', () => {
     });
     expect(refreshSession).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [426, 'app.update_required', 'update'],
+    [503, 'app.maintenance', 'maintenance'],
+  ] as const)('publishes the %s %s gate response to the shell', async (status, code, gate) => {
+    const problem = ProblemDetailsSchema.parse({
+      type: 'about:blank',
+      title: 'Gate response',
+      status,
+      code,
+      requestId,
+    });
+    const fetch = jest
+      .fn<Promise<Response>, Parameters<typeof globalThis.fetch>>()
+      .mockResolvedValue(response(problem, status, 'application/problem+json'));
+    const onAppGate = jest.fn();
+    const endpointContract = coreEndpoints.find(
+      ({ operationId }) => operationId === 'getAppConfig',
+    );
+    if (endpointContract === undefined) throw new Error('Missing app config contract endpoint.');
+    const client = createApiClient({
+      baseUrl: 'https://api.example.invalid',
+      appVersion: '1.2.3',
+      platform: 'ios',
+      fetch,
+      session: {
+        getAccessToken: jest.fn().mockResolvedValue('should-not-be-requested'),
+        refreshSession: jest.fn().mockResolvedValue(null),
+        signOutLocal: jest.fn().mockResolvedValue(undefined),
+      },
+      createRequestId: () => requestId,
+      translate: (key) => key,
+      onAppGate,
+    });
+    const endpoint = {
+      method: endpointContract.method,
+      path: endpointContract.path,
+      security: endpointContract.security,
+      successStatus: endpointContract.successStatus,
+      responseSchema: AppConfigResponse,
+    } as const;
+
+    await expect(client.request(endpoint)).rejects.toMatchObject({ status, code });
+    expect(onAppGate).toHaveBeenCalledWith(gate);
+  });
+
+  it('does not publish unrelated 503 errors as a maintenance gate', async () => {
+    const problem = ProblemDetailsSchema.parse({
+      type: 'about:blank',
+      title: 'Rate limited',
+      status: 503,
+      code: 'platform.rate_limited',
+      requestId,
+    });
+    const fetch = jest
+      .fn<Promise<Response>, Parameters<typeof globalThis.fetch>>()
+      .mockResolvedValue(response(problem, 503, 'application/problem+json'));
+    const onAppGate = jest.fn();
+    const client = createApiClient({
+      baseUrl: 'https://api.example.invalid',
+      appVersion: '1.2.3',
+      platform: 'ios',
+      fetch,
+      session: {
+        getAccessToken: jest.fn().mockResolvedValue(null),
+        refreshSession: jest.fn().mockResolvedValue(null),
+        signOutLocal: jest.fn().mockResolvedValue(undefined),
+      },
+      createRequestId: () => requestId,
+      translate: (key) => key,
+      onAppGate,
+    });
+    const endpointContract = coreEndpoints.find(
+      ({ operationId }) => operationId === 'getAppConfig',
+    );
+    if (endpointContract === undefined) throw new Error('Missing app config contract endpoint.');
+    const endpoint = {
+      method: endpointContract.method,
+      path: endpointContract.path,
+      security: endpointContract.security,
+      successStatus: endpointContract.successStatus,
+      responseSchema: AppConfigResponse,
+    } as const;
+
+    await expect(client.request(endpoint)).rejects.toMatchObject({ code: 'platform.rate_limited' });
+    expect(onAppGate).not.toHaveBeenCalled();
   });
 
   it('retains the attempted request ID when every network attempt fails', async () => {
@@ -557,6 +644,71 @@ describe('typed API client', () => {
       await jest.advanceTimersByTimeAsync(20);
       await rejection;
       expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('aborts an active request and prevents GET retries after a caller cancellation', async () => {
+    const fetch = jest.fn<Promise<Response>, Parameters<typeof globalThis.fetch>>(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+            once: true,
+          });
+        }),
+    );
+    const controller = new AbortController();
+    const client = createApiClient({
+      baseUrl: 'https://api.example.invalid',
+      appVersion: '1.2.3',
+      platform: 'ios',
+      fetch,
+      session: {
+        getAccessToken: jest.fn().mockResolvedValue(null),
+        refreshSession: jest.fn().mockResolvedValue(null),
+        signOutLocal: jest.fn().mockResolvedValue(undefined),
+      },
+      createRequestId: () => requestId,
+      translate: (key) => key,
+    });
+
+    const pending = client.request(coreEndpoints[0], { signal: controller.signal });
+    const rejected = expect(pending).rejects.toMatchObject({ status: 0 });
+    controller.abort();
+    await rejected;
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('includes GET backoff in the total deadline and cancels the pending retry delay', async () => {
+    jest.useFakeTimers();
+    try {
+      const fetch = jest
+        .fn<Promise<Response>, Parameters<typeof globalThis.fetch>>()
+        .mockResolvedValueOnce(response({ status: 'unavailable' }, 503));
+      const sleep = jest.fn(() => new Promise<void>(() => undefined));
+      const client = createApiClient({
+        baseUrl: 'https://api.example.invalid',
+        appVersion: '1.2.3',
+        platform: 'ios',
+        fetch,
+        session: {
+          getAccessToken: jest.fn().mockResolvedValue(null),
+          refreshSession: jest.fn().mockResolvedValue(null),
+          signOutLocal: jest.fn().mockResolvedValue(undefined),
+        },
+        createRequestId: () => requestId,
+        translate: (key) => key,
+        random: () => 0,
+        sleep,
+      });
+
+      const pending = client.request(coreEndpoints[0], { totalTimeoutMs: 3_000 });
+      const rejected = expect(pending).rejects.toMatchObject({ status: 0 });
+      await jest.advanceTimersByTimeAsync(3_000);
+      await rejected;
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(sleep).toHaveBeenCalledWith(250);
     } finally {
       jest.useRealTimers();
     }

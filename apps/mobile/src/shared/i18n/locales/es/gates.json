@@ -1,8 +1,12 @@
 {
   "updateTitle": "Se requiere una actualización",
   "updateMessage": "Instala una versión actualizada para continuar.",
+  "updateAction": "Actualizar ahora",
   "maintenanceTitle": "Mantenimiento",
   "maintenanceMessage": "Inténtalo de nuevo más tarde.",
+  "maintenance": { "default": "Inténtalo de nuevo más tarde." },
+  "maintenanceUntil": "Restablecimiento estimado del servicio: {{until}}",
+  "retryAction": "Intentar de nuevo",
   "termsTitle": "Términos y privacidad",
   "termsMessage": "Los documentos legales todavía no están configurados.",
   "extensionErrorTitle": "No se pudo verificar una extensión.",

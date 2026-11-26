@@ -1,7 +1,7 @@
 import React from 'react';
 
-import { GateReservedScreen } from '../../features/shell/ui/screens';
+import { MaintenanceGateScreen as AppConfigMaintenanceGateScreen } from '../../features/app-config/ui/app-config-gate-screens';
 
-export default function MaintenanceGateScreen() {
-  return <GateReservedScreen titleKey="maintenanceTitle" messageKey="maintenanceMessage" />;
+export default function MaintenanceGateScreenRoute() {
+  return <AppConfigMaintenanceGateScreen />;
 }
