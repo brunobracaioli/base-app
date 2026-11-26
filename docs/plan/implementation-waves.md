@@ -6,7 +6,7 @@
 
 Fundações concluídas localmente em 2026-11-25: [evidências e critérios das ondas 1/2/3](waves-1-3-verification.md).
 Onda 4 concluída localmente em 2026-11-25: [aceites e evidências](wave-4-verification.md).
-Onda 5 em conclusão: [verificação](wave-5-verification.md) e
+Onda 5 concluída localmente: [verificação](wave-5-verification.md) e
 [decisões aprovadas](wave-5-execution.md), detalhadas no ADR 0017. O dono autorizou
 execução contínua das ondas restantes, preservando dependências e gates por onda.
 O aceite segue o foco de template de desenvolvimento em base-app §2: código e
@@ -21,7 +21,7 @@ o aceite do código correspondente.
 | 2 | Baseline do Supabase (config, papéis, auditoria, `pg_cron`, pgTAP, tipos Kysely) | 0 | 1, 3 | ✅ |
 | 3 | Casca do app mobile (Expo Router, gates, i18n, tema, client, Sentry, EAS, extensões) | 0 | 1, 2 | ✅ |
 | 4 | Auth na API, perfil (`/v1/me`) e consentimentos | 1, 2 | 3 | ✅ |
-| 5 | Configuração remota e gates (app e servidor) | 3, 4 | — | ⬜ |
+| 5 | Configuração remota e gates (app e servidor) | 3, 4 | — | ✅ |
 | 6 | Login por e-mail no app (código, senha, redefinição, troca, sessão cifrada, termos) | 5 | — | ⬜ |
 | 7 | Assinatura (SDK, paywall, restaurar, gerenciar; conferência no servidor) | 6 | — | ⬜ |
 | 8 | Feature de exemplo protegida por assinatura | 7 | 9 | ⬜ |
