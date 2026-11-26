@@ -138,15 +138,6 @@ language sql stable security definer set search_path = '' as $$
   limit 1
 $$;
 
-revoke all on function app_config.read_setting(text),
-  app_config.read_rollback_setting(text)
-  from public, anon, authenticated, service_role, api_runtime, migrator,
-       identity_system, privacy_system, app_config_system, platform_system,
-       app_config_history_reader, audit_writer, audit_operator_writer,
-       audit_reader, ops;
-grant execute on function app_config.read_setting(text),
-  app_config.read_rollback_setting(text) to app_config_writer;
-
 create or replace function app_config.set_setting(
   p_key text, p_value jsonb, p_actor_type text, p_actor_ref text,
   p_correlation_id text, p_expected_updated_at timestamptz, p_force boolean
@@ -214,6 +205,15 @@ begin
 end;
 $$;
 
+-- Temporary ownership capabilities follow the PostgreSQL 17 W2 pattern.
+grant create on schema app_config to app_config_admin, app_config_history_reader;
+grant app_config_admin, app_config_history_reader to postgres with set true, inherit false;
+alter function app_config.set_setting(text, jsonb, text, text, text, timestamptz, boolean)
+  owner to app_config_admin;
+alter function app_config.read_setting(text) owner to app_config_admin;
+alter function app_config.read_rollback_setting(text) owner to app_config_history_reader;
+
+select set_config('role', 'app_config_admin', true);
 create or replace function app_config.set_setting(
   p_key text, p_value jsonb, p_actor_type text, p_actor_ref text,
   p_correlation_id text, p_expected_updated_at timestamptz
@@ -225,29 +225,8 @@ begin
 end;
 $$;
 
-revoke all on function app_config.set_setting(
-  text, jsonb, text, text, text, timestamptz, boolean
-), app_config.set_setting(text, jsonb, text, text, text, timestamptz)
-  from public, anon, authenticated, service_role, api_runtime, migrator,
-       identity_system, privacy_system, app_config_system, platform_system,
-       app_config_history_reader, audit_writer, audit_operator_writer,
-       audit_reader, ops;
-grant execute on function app_config.set_setting(
-  text, jsonb, text, text, text, timestamptz, boolean
-), app_config.set_setting(text, jsonb, text, text, text, timestamptz)
-  to app_config_writer;
-
--- Temporary ownership capabilities follow the PostgreSQL 17 W2 pattern.
-grant create on schema app_config to app_config_admin, app_config_history_reader;
-grant app_config_admin, app_config_history_reader to postgres with set true, inherit false;
-alter function app_config.set_setting(text, jsonb, text, text, text, timestamptz, boolean)
-  owner to app_config_admin;
 alter function app_config.set_setting(text, jsonb, text, text, text, timestamptz)
   owner to app_config_admin;
-alter function app_config.read_setting(text) owner to app_config_admin;
-alter function app_config.read_rollback_setting(text) owner to app_config_history_reader;
-
-select set_config('role', 'app_config_admin', true);
 revoke all on function app_config.set_setting(
   text, jsonb, text, text, text, timestamptz, boolean
 ), app_config.set_setting(text, jsonb, text, text, text, timestamptz),
