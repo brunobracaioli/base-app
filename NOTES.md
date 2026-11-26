@@ -2,28 +2,28 @@
 
 ## Status atual
 
-- **Fase:** onda 4 concluída localmente, na branch `feat/w4-auth-profile-consents`
-  (`/tmp/app-base-w4`). Auth por JWKS, perfil e consentimentos estão implementados
-  e verificados. A `main` local contém as fundações 0–3 (`4261bce`); sem push.
-- **Próximo passo:** revisar/integrar a branch W4; depois executar a onda 5,
-  configuração remota e gates. Nenhuma onda 5+ foi iniciada.
-- **Evidências:** [verificação da onda 4](docs/plan/wave-4-verification.md) e
-  [plano de execução](docs/plan/wave-4-execution.md). Código `f4fb085` aprovado
-  em 18 gates locais, 405 testes e cobertura mínima por arquivo de domínio/aplicação.
-  Um teste condicionado à conexão é separado da prova real.
-- **Banco e Auth reais:** pgTAP passou em 238 asserções/12 arquivos; tipos de oito
-  tabelas sem drift. O harness passou 22 verificações com JWT/JWKS reais, handlers,
-  repositórios e PostgreSQL TLS. Rate limit/marcador/relógio foram fakes nas portas.
-- **Contratos:** OpenAPI 1.1.0; GET/PATCH `/v1/me`, POST `/v1/me/consents` com 204,
-  erros estáveis e limites fechados. `Me.createdAt` é a criação do perfil.
-  `identity.read_fresh_roles` só retorna os papéis do próprio usuário.
-- **Operação:** local/KVM existente, sem GitHub Actions, projeto hospedado,
-  deploy, publicação, novo PR ou credenciais no chat. Login mobile completo,
-  assinatura e demais funcionalidades permanecem nas ondas seguintes.
-- **Limpeza:** stack, volumes, rede, chaves/credenciais temporárias e túnel da
-  W4 removidos; workloads alheios da KVM preservados.
-- **Uso local:** [desenvolver a partir do template](docs/how-to/develop-from-template.md).
-  Fundamentos anteriores: [ondas 1–3](docs/plan/waves-1-3-verification.md).
+- **Fase:** onda 5 em implementação local na branch `feat/w5-config-gates`,
+  worktree `/tmp/app-base-w5`. A `main` local integrou a onda 4 validada
+  (`c690f28`); não houve push, PR, Actions ou deploy.
+- **Concluído nesta onda:** plano de execução e correções de consistência;
+  contratos/OpenAPI 1.2.0 de configuração remota (12 testes, lint/typecheck);
+  núcleo puro de planejamento da operação (19 testes). API e mobile seguem
+  em implementação paralela com Luna/xhigh.
+- **Decisões pendentes:** leitores SQL restritos/force auditado, aprovação
+  assinada por duas pessoas fora de Actions, limite temporal real do mobile,
+  comparação SQL de versões e origem confiável do evento de rollback.
+  Propostas em [wave-5-execution.md](docs/plan/wave-5-execution.md).
+  Nenhuma mudança de permissões ou operação pendente foi implementada.
+- **Próximo passo:** concluir e verificar as partes independentes da API/mobile;
+  após decisão do dono, implementar os adapters de operação e a migration
+  aditiva. Não iniciar a onda 6 nem marcar a onda 5 como pronta.
+- **Banco:** stack descartável na KVM criada/resetada; pgTAP da baseline passou
+  em 238 asserções/12 arquivos. TLS validado com `api_runtime`; leitura sem
+  papel negada, leitura com `app_config_system` permitida. Recursos de teste
+  ainda ativos enquanto a verificação da onda 5 está em andamento.
+- **Histórico:** [onda 4](docs/plan/wave-4-verification.md) e
+  [fundação 1–3](docs/plan/waves-1-3-verification.md) concluídas localmente.
+  Contas, publicação e operação real dos derivados não são simuladas.
 
 ## Roadmap
 
