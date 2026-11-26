@@ -6,9 +6,9 @@
 
 Fundações concluídas localmente em 2026-11-25: [evidências e critérios das ondas 1/2/3](waves-1-3-verification.md).
 Onda 4 concluída localmente em 2026-11-25: [aceites e evidências](wave-4-verification.md).
-Onda 5 parcialmente entregue: [verificação](wave-5-verification.md) e
-[decisões pendentes](wave-5-execution.md). API/mobile verificados; operação
-administrativa ainda incompleta. Mantém-se ⬜; retomar essa onda antes da 6.
+Onda 5 em conclusão: [verificação](wave-5-verification.md) e
+[decisões aprovadas](wave-5-execution.md), detalhadas no ADR 0017. O dono autorizou
+execução contínua das ondas restantes, preservando dependências e gates por onda.
 O aceite segue o foco de template de desenvolvimento em base-app §2: código e
 provas locais são obrigatórios; contas, implantação e publicação do app derivado
 são etapas documentadas. Falhas do banco e contratos pendentes continuam bloqueando
@@ -374,9 +374,8 @@ e-mail fora de parâmetro de rota (SH-N8 a SH-N11); fachada `extensions/api.ts`
 - **Objetivo**: bloquear versões antigas e ligar manutenção sem release.
 - **Specs/ADRs**: app-config; mobile-app-shell.
 - **Escopo**: contexto `app-config`; `GET /v1/app-config` com cache da CDN; gate do servidor
-  (426 e 503 em escrita) ligado ao pipeline; script `pnpm app-config:set` e workflow do
-  GitHub com aprovação (Environment `production-config` com `prevent_self_review` e job
-  `protections`), que grava por `app_config.set_setting` com o papel `app_config_writer`
+  (426 e 503 em escrita) ligado ao pipeline; script `pnpm app-config:set` e executor local com duas assinaturas
+  distintas (ADR 0017), que grava por `app_config.set_setting` com o papel `app_config_writer`
 (`actor_type = 'system'`), com guarda de salto (`--force`) e `pnpm app-config:rollback`;
   manutenção bloqueia **todas** as rotas exceto `/v1/health` e `/v1/app-config`;
   `stale-while-revalidate=60`; `modules/app-config/index.ts` exporta `APP_CONFIG_KEYS` e
@@ -385,8 +384,8 @@ e-mail fora de parâmetro de rota (SH-N8 a SH-N11); fachada `extensions/api.ts`
 - **Critérios de aceite**: os critérios de app-config (inclusive a escrita só por `set_setting` e
   a coincidência entre `APP_CONFIG_KEYS`, a função e o `check` da tabela); valor inválido no banco não derruba o
   endpoint; o app offline entra com a configuração guardada; o gate do servidor bloqueia em
-  ≤ 60 s e o app em ≤ 150 s no pior caso; em manutenção `GET /v1/me` responde 503; `--force` e
-  `rollback` funcionam e a autoaprovação do workflow é impedida; script e `rollback` passam o
+  ≤ 60 s e o app online/foreground em até 210 s mais rede (resposta de até 150 s + polling de 60 s); em manutenção `GET /v1/me` responde 503; `--force` e
+  `rollback` funcionam e a autoaprovação do executor é impedida; script e `rollback` passam o
   `updated_at` lido e um conflito responde 409 `app_config.conflict`.
 - **Verificação**: `pnpm --filter web test -- app-config && pnpm --filter mobile test -- app-config`
 

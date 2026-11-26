@@ -189,7 +189,7 @@ derivados (merge de `upstream`).
 
 | # | STRIDE | Cenário | P/I | Tratamento |
 |---|--------|---------|-----|------------|
-| AC-1 | T/D | Operador ou credencial `app_config_admin` comprometidos fixam `minSupported` inalcançável ou ligam manutenção: todos os apps ficam bloqueados | B/A | Papel dedicado, workflow com aprovação, `audit.events`, validação cruzada; Environment `production-config` com `prevent_self_review` (regra de duas pessoas), guarda de salto com `--force` e `app-config:rollback` (app-config §3.3, AC-05). **G20 resolvida** |
+| AC-1 | T/D | Operador ou credencial `app_config_admin` comprometidos fixam `minSupported` inalcançável ou ligam manutenção: todos os apps ficam bloqueados | B/A | Papel dedicado, workflow com aprovação, `audit.events`, validação cruzada; plano local com duas assinaturas distintas (ADR 0017; uso direto da credencial continua residual), guarda de salto com `--force` e `app-config:rollback` (app-config §3.3, AC-05). **G20 resolvida** |
 | AC-2 | T | Cliente modificado ou antigo ignora o gate, omitindo ou forjando `X-App-Version` | A/B | O gate do servidor só protege contra apps oficiais (AC-02, §3.2). Não é fronteira de segurança: residual R13 |
 | AC-3 | T | Resposta pública cacheada atrasa a tela de bloqueio do app (CDN `s-maxage` 60 s mais `stale-while-revalidate` 60 s, mais 30 s em memória: pior caso de 150 s) | M/M | O gate do servidor bloqueia em ≤ 60 s e é a garantia (app-config §3.2, §6, AC-N1, AC-N2); resíduo do app em R13. **C6 resolvida** |
 | AC-4 | T | Valor inválido no banco derruba ou desliga o gate | B/M | Último valor válido em memória ou padrão seguro, com alerta (AC-06). O padrão seguro é "sem bloqueio" (fail-open para o kill switch) |
@@ -345,7 +345,7 @@ com as listas de extensão vazias; os riscos abaixo aparecem quando alguém as p
 | R10 | `user_id` pseudonimizado em logs da Vercel, Sentry e Redis (TTL) até a retenção da plataforma; HMAC não é anonimização; operadores no exterior | Sem PII direta nos logs; `AUDIT_SUBJECT_KEY` Sensitive; texto da política de privacidade deve dizer isso (contradição C7) |
 | R11 | Separação `api_runtime` → papéis é lógica; SQL injection ou execução de código na API alcança todos os usuários | Invariantes críticas no banco, Semgrep, bind de claims |
 | R12 | Trilha de login, troca de senha e ações no Studio ficam nos logs das plataformas | Retenção do plano; MFA no Studio |
-| R13 | O gate de versão não é fronteira de segurança (cabeçalho forjável) e a tela de atualização do app tem atraso de até 150 s (CDN 60 s + 60 s de revalidação + 30 s de cache); o gate do servidor bloqueia em ≤ 60 s | Protege apenas contra apps oficiais antigos; correção de falha do servidor tem de ser feita no servidor (C6 resolvida em app-config §3.2 e §6) |
+| R13 | O gate de versão não é fronteira de segurança (cabeçalho forjável) e a resposta do app pode ter até 150 s de idade; polling foreground de 60 s acrescenta até 60 s mais rede (ADR 0017); o gate do servidor bloqueia em ≤ 60 s | Protege apenas contra apps oficiais antigos; correção de falha do servidor tem de ser feita no servidor (C6 resolvida em app-config §3.2 e §6) |
 | R14 | Extensões e forks são código confiável no mesmo processo | Revisão e testes; sandbox seria um novo ADR |
 | R15 | Contas de painel (RevenueCat, Resend, Expo, lojas, Vercel, Supabase, Upstash) são cadeia de confiança | 2FA obrigatório e papéis mínimos no how-to de operação |
 | R16 | DSN pública do Sentry permite ruído | Filtros de entrada e teto de gasto |
@@ -703,3 +703,14 @@ diferiu da proposta.
 - Perfil e consentimentos exigem RLS forçado e provas HTTP/pgTAP A/B; requests
   não aceitam user_id. O aceite é naturalmente idempotente, preserva accepted_at
   e rejeita versão desatualizada. Testes cobrem normalização e campos extras.
+
+
+### Operação de configuração aprovada — ADR 0017
+
+Leitores por chave substituem a lacuna de leitura do writer. Papel de histórico
+sem login recebe apenas colunas/linhas necessárias; writer e ops não ganham SELECT
+adicional. A ação app_config.updated é reservada ao mutator, impedindo falsificação
+por writers genéricos. Executor verifica duas assinaturas, alvo, commit/tree, CAS
+e validade antes de escrever; uso direto da credencial DB e host comprometido
+continuam residuais explícitos. A resposta pode ter 150 s; detecção em foreground
+é até 210 s mais rede com polling de 60 s, sem garantia offline/background.
