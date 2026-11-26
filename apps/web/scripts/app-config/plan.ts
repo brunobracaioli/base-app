@@ -383,10 +383,47 @@ export async function executeApprovedAppConfigPlan(input: {
     if (
       source === null ||
       source.eventId !== currentPayloadOperation.rollbackEventId ||
-      source.key !== currentPayloadOperation.key ||
-      !sameJson(source.before, currentPayloadOperation.after) ||
-      !sameJson(source.after, currentPayloadOperation.before)
+      source.key !== currentPayloadOperation.key
     ) {
+      fail('app_config.rollback_conflict', 'The rollback source changed; prepare a fresh plan.');
+    }
+    let derivedRollback: AppConfigOperationPlan;
+    try {
+      derivedRollback = planRollback({
+        key: currentPayloadOperation.key,
+        current,
+        source,
+      });
+    } catch {
+      fail('app_config.rollback_conflict', 'The rollback source changed; prepare a fresh plan.');
+    }
+    const derivedOperation = {
+      kind: derivedRollback.kind,
+      key: derivedRollback.key,
+      before: derivedRollback.before,
+      after: derivedRollback.after,
+      expectedUpdatedAt: derivedRollback.expectedUpdatedAt,
+      force: derivedRollback.force,
+      forceReasons: [...derivedRollback.forceReasons],
+      diff: derivedRollback.diff,
+      ...(derivedRollback.rollbackEventId === undefined
+        ? {}
+        : { rollbackEventId: derivedRollback.rollbackEventId }),
+    };
+    const signedOperation = {
+      kind: currentPayloadOperation.kind,
+      key: currentPayloadOperation.key,
+      before: currentPayloadOperation.before,
+      after: currentPayloadOperation.after,
+      expectedUpdatedAt: currentPayloadOperation.expectedUpdatedAt,
+      force: currentPayloadOperation.force,
+      forceReasons: currentPayloadOperation.forceReasons,
+      diff: currentPayloadOperation.diff,
+      ...(currentPayloadOperation.rollbackEventId === undefined
+        ? {}
+        : { rollbackEventId: currentPayloadOperation.rollbackEventId }),
+    };
+    if (!sameJson(derivedOperation, signedOperation)) {
       fail('app_config.rollback_conflict', 'The rollback source changed; prepare a fresh plan.');
     }
   }

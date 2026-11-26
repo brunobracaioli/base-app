@@ -427,6 +427,73 @@ describe('app-config approval execution boundary', () => {
     ).rejects.toMatchObject({ code: 'app_config.rollback_conflict' });
     expect(changedSource.writes).toHaveLength(0);
   });
+
+  it('accepts historical maintenance before-values whose omitted defaults normalize in the planner', async () => {
+    const historicalBefore = { active: false };
+    const currentMaintenance = {
+      active: true,
+      platforms: ['ios', 'android'],
+      messageKey: 'maintenance.default',
+      until: null,
+    };
+    const normalizedBefore = {
+      active: false,
+      platforms: ['ios', 'android'],
+      messageKey: 'maintenance.default',
+      until: null,
+    };
+    const source = {
+      eventId: ROLLBACK_EVENT_ID,
+      key: 'maintenance' as const,
+      before: historicalBefore,
+      after: currentMaintenance,
+    };
+    const rollback = planRollback({
+      key: 'maintenance',
+      current: { value: currentMaintenance, updatedAt: UPDATED_AT },
+      source,
+    });
+    expect(rollback.after).toEqual(normalizedBefore);
+
+    const { envelope, trust } = await signedEnvelope(rollback);
+    const fake = fakePort({
+      current: { value: currentMaintenance, updatedAt: UPDATED_AT },
+      rollback: source,
+    });
+    await executeApprovedAppConfigPlan({
+      envelope,
+      trustRegistry: trust,
+      port: fake.port,
+      target: TARGET,
+      checkout: CHECKOUT,
+      now: NOW,
+    });
+
+    expect(fake.reads).toEqual(['current:maintenance', 'rollback:maintenance']);
+    expect(fake.writes).toHaveLength(1);
+    expect(fake.writes[0]).toMatchObject({
+      key: 'maintenance',
+      value: normalizedBefore,
+      expectedUpdatedAt: UPDATED_AT,
+      force: false,
+    });
+
+    const changedHistory = fakePort({
+      current: { value: currentMaintenance, updatedAt: UPDATED_AT },
+      rollback: { ...source, before: currentMaintenance },
+    });
+    await expect(
+      executeApprovedAppConfigPlan({
+        envelope,
+        trustRegistry: trust,
+        port: changedHistory.port,
+        target: TARGET,
+        checkout: CHECKOUT,
+        now: NOW,
+      }),
+    ).rejects.toMatchObject({ code: 'app_config.rollback_conflict' });
+    expect(changedHistory.writes).toHaveLength(0);
+  });
 });
 
 describe('app-config PostgreSQL adapter', () => {
