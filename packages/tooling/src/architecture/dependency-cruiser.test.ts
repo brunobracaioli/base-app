@@ -121,7 +121,7 @@ describe('dependency-cruiser architecture rules', () => {
       writeFixture(
         root,
         'apps/mobile/src/shared/api-client/api-client.ts',
-        'export type ApiClient = {};\n',
+        'export type ApiClient = {};\nexport const createApiClient = (): ApiClient => ({});\n',
       );
       writeFixture(
         root,
@@ -149,6 +149,32 @@ describe('dependency-cruiser architecture rules', () => {
         appProvidersPath,
         `import { installExtensionApi } from '${importPath(appProvidersPath, 'apps/mobile/src/composition/extension-api.ts')}';\nimport type { SessionPort } from '${importPath(appProvidersPath, 'apps/mobile/src/features/auth/model/auth-ports.ts')}';\nimport type { ApiClient } from '${importPath(appProvidersPath, 'apps/mobile/src/shared/api-client/api-client.ts')}';\nvoid [installExtensionApi, {} as SessionPort | ApiClient];\n`,
       );
+      const appProvidersTestPath = 'apps/mobile/src/features/shell/ui/app-providers.test.tsx';
+      writeFixture(
+        root,
+        appProvidersTestPath,
+        `import { subscribeApiAppGates } from '${importPath(appProvidersTestPath, 'apps/mobile/src/shared/api-client/index.ts')}';\nvoid subscribeApiAppGates;\n`,
+      );
+      const appConfigProviderPath =
+        'apps/mobile/src/features/app-config/ui/app-config-provider.tsx';
+      writeFixture(
+        root,
+        appConfigProviderPath,
+        `import { subscribeApiAppGates } from '${importPath(appConfigProviderPath, 'apps/mobile/src/shared/api-client/index.ts')}';\nvoid subscribeApiAppGates;\n`,
+      );
+      const appConfigReaderPath = 'apps/mobile/src/features/app-config/api/app-config-reader.ts';
+      writeFixture(
+        root,
+        appConfigReaderPath,
+        `import type { ApiClient } from '${importPath(appConfigReaderPath, 'apps/mobile/src/shared/api-client/index.ts')}';\nvoid ({} as ApiClient);\n`,
+      );
+      const appConfigReaderTestPath =
+        'apps/mobile/src/features/app-config/api/app-config-reader.test.ts';
+      writeFixture(
+        root,
+        appConfigReaderTestPath,
+        `import { createApiClient } from '${importPath(appConfigReaderTestPath, 'apps/mobile/src/shared/api-client/api-client.ts')}';\nvoid createApiClient;\n`,
+      );
       const authAdapterPath = 'apps/mobile/src/features/auth/api/ports-consumer.ts';
       writeFixture(
         root,
@@ -159,7 +185,7 @@ describe('dependency-cruiser architecture rules', () => {
       writeFixture(
         root,
         sharedApiPath,
-        `import type { SessionPort } from '${importPath(sharedApiPath, 'apps/mobile/src/features/auth/model/auth-ports.ts')}';\nvoid ({} as SessionPort);\n`,
+        `import type { SessionPort } from '${importPath(sharedApiPath, 'apps/mobile/src/features/auth/model/auth-ports.ts')}';\nvoid ({} as SessionPort);\nexport type ApiClient = {};\nexport const subscribeApiAppGates = (): void => {};\n`,
       );
       writeFixture(
         root,
@@ -322,6 +348,34 @@ describe('dependency-cruiser architecture rules', () => {
       target: 'apps/mobile/src/features/auth/model/auth-ports.ts',
       source: (entry: string, target: string) =>
         `import type { SessionPort } from '${importPath(entry, target)}';\nvoid ({} as SessionPort);\n`,
+    },
+    {
+      rule: 'mobile-private-api-client-imports-only-from-core',
+      entry: 'apps/mobile/src/features/custom/api/client-access.ts',
+      target: 'apps/mobile/src/shared/api-client/index.ts',
+      source: (entry: string, target: string) =>
+        `import { apiClient } from '${importPath(entry, target)}';\nvoid apiClient;\n`,
+    },
+    {
+      rule: 'mobile-private-core-imports-only-from-core',
+      entry: 'apps/mobile/src/features/app-config/api/app-config-reader.ts',
+      target: 'apps/mobile/src/composition/extension-api.ts',
+      source: (entry: string, target: string) =>
+        `import { getConfiguredExtensionApi } from '${importPath(entry, target)}';\nvoid getConfiguredExtensionApi;\n`,
+    },
+    {
+      rule: 'mobile-private-core-imports-only-from-core',
+      entry: 'apps/mobile/src/features/app-config/api/app-config-reader.ts',
+      target: 'apps/mobile/src/features/auth/model/auth-ports.ts',
+      source: (entry: string, target: string) =>
+        `import type { SessionPort } from '${importPath(entry, target)}';\nvoid ({} as SessionPort);\n`,
+    },
+    {
+      rule: 'mobile-extensions-use-public-facade',
+      entry: 'apps/mobile/src/extensions/private-client.ts',
+      target: 'apps/mobile/src/shared/api-client/api-client.ts',
+      source: (entry: string, target: string) =>
+        `import { apiClient } from '${importPath(entry, target)}';\nvoid apiClient;\n`,
     },
     {
       rule: 'system-db-only-from-context-infrastructure',
