@@ -9,7 +9,12 @@
     "lint": "eslint src scripts next.config.ts instrumentation.ts sentry.server.config.ts sentry.edge.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/test.mjs",
-    "app-config:operator:test": "node scripts/test.mjs scripts/app-config/operation.test.ts",
+    "app-config:set": "tsx scripts/app-config/cli.ts set",
+    "app-config:rollback": "tsx scripts/app-config/cli.ts rollback",
+    "app-config:sign": "tsx scripts/app-config/cli.ts sign",
+    "app-config:execute": "tsx scripts/app-config/cli.ts execute",
+    "app-config:operator:test": "node scripts/test.mjs scripts/app-config",
+    "app-config:operator:typecheck": "tsc --ignoreConfig --noEmit --strict --target ES2022 --module ESNext --moduleResolution Bundler --types node,vitest/globals --skipLibCheck scripts/app-config/*.ts",
     "headers:check": "node scripts/check-security-headers.mjs",
     "db:types": "node scripts/db-types.mjs",
     "site-env:check": "tsx scripts/validate-site-env.ts"

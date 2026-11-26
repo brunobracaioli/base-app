@@ -1,4 +1,6 @@
 import { APP_CONFIG_KEYS, appConfigValueSchemas } from '../../src/modules/app-config';
+import { isAbsolute } from 'node:path';
+import { parseJsonRejectDuplicateMembers } from './json';
 
 export type AppConfigKey = (typeof APP_CONFIG_KEYS)[number];
 
@@ -77,11 +79,13 @@ export type ParsedSetArguments = {
   readonly source: SetSource;
   readonly dryRun: boolean;
   readonly force: boolean;
+  readonly planPath?: string;
 };
 
 export type ParsedRollbackArguments = {
   readonly key: AppConfigKey;
   readonly dryRun: boolean;
+  readonly planPath?: string;
 };
 
 function isAppConfigKey(value: string | undefined): value is AppConfigKey {
@@ -108,6 +112,7 @@ export function parseSetArguments(args: readonly string[]): ParsedSetArguments {
   let source: SetSource | undefined;
   let dryRun = false;
   let force = false;
+  let planPath: string | undefined;
   for (let index = 1; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--json' || argument === '--file') {
@@ -127,11 +132,28 @@ export function parseSetArguments(args: readonly string[]): ParsedSetArguments {
       force = true;
       continue;
     }
+    if (argument === '--plan') {
+      if (planPath !== undefined) throw new AppConfigOperationError('app_config.invalid_arguments');
+      const value = requiredOptionValue(args, index);
+      if (!isAbsolute(value)) throw new AppConfigOperationError('app_config.invalid_arguments');
+      planPath = value;
+      index += 1;
+      continue;
+    }
     throw new AppConfigOperationError('app_config.invalid_arguments');
   }
 
   if (source === undefined) throw new AppConfigOperationError('app_config.invalid_arguments');
-  return { key: keyArgument, source, dryRun, force };
+  if (dryRun && planPath !== undefined) {
+    throw new AppConfigOperationError('app_config.invalid_arguments');
+  }
+  return {
+    key: keyArgument,
+    source,
+    dryRun,
+    force,
+    ...(planPath === undefined ? {} : { planPath }),
+  };
 }
 
 export function parseRollbackArguments(args: readonly string[]): ParsedRollbackArguments {
@@ -139,7 +161,17 @@ export function parseRollbackArguments(args: readonly string[]): ParsedRollbackA
   if (!isAppConfigKey(keyArgument))
     throw new AppConfigOperationError('app_config.invalid_arguments');
   if (args.length > 2 || (args.length === 2 && args[1] !== '--dry-run')) {
-    throw new AppConfigOperationError('app_config.invalid_arguments');
+    const planIndex = args.indexOf('--plan');
+    if (
+      planIndex < 0 ||
+      planIndex !== 1 ||
+      args.length !== 3 ||
+      args[2] === undefined ||
+      !isAbsolute(args[2])
+    ) {
+      throw new AppConfigOperationError('app_config.invalid_arguments');
+    }
+    return { key: keyArgument, dryRun: false, planPath: args[2] };
   }
   return { key: keyArgument, dryRun: args[1] === '--dry-run' };
 }
@@ -151,8 +183,7 @@ export function parseJsonValue(raw: string): unknown {
     throw new AppConfigOperationError('app_config.invalid_json');
   }
   try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed;
+    return parseJsonRejectDuplicateMembers(raw);
   } catch {
     throw new AppConfigOperationError('app_config.invalid_json');
   }
@@ -216,7 +247,11 @@ function flattenValue(value: unknown, path: string, output: Map<string, string>)
   output.set(path || '$', canonicalJson(value));
 }
 
-function formatDiff(key: AppConfigKey, before: unknown | null, after: unknown): string {
+export function formatAppConfigDiff(
+  key: AppConfigKey,
+  before: unknown | null,
+  after: unknown,
+): string {
   const beforeValues = new Map<string, string>();
   const afterValues = new Map<string, string>();
   if (before !== null) flattenValue(before, '', beforeValues);
@@ -341,7 +376,7 @@ export function planSetChange(input: {
     expectedUpdatedAt: input.current.updatedAt,
     force: input.force,
     forceReasons: Object.freeze(forceReasons),
-    diff: formatDiff(input.key, before, after),
+    diff: formatAppConfigDiff(input.key, before, after),
   });
 }
 
@@ -374,7 +409,7 @@ export function planRollback(input: {
     expectedUpdatedAt: input.current.updatedAt,
     force: false,
     forceReasons: Object.freeze([]),
-    diff: formatDiff(input.key, before, after),
+    diff: formatAppConfigDiff(input.key, before, after),
     rollbackEventId: input.source.eventId,
   });
 }
