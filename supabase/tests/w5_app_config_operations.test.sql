@@ -350,8 +350,8 @@ select throws_ok($sql$
 $sql$, '23502', null, 'an audit insert error aborts the setting write');
 reset role;
 select is(
-  (select value::text from app_config.settings where key = 'maintenance'),
-  '{"active":true}',
+  (select value from app_config.settings where key = 'maintenance'),
+  '{"active":true}'::jsonb,
   'audit failure rolls the setting mutation back atomically'
 );
 select is(
