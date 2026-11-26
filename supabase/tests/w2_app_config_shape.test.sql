@@ -14,6 +14,32 @@ select ok(
   ),
   'versions reject minSupported greater than latest'
 );
+select ok(
+  app_config.valid_versions(
+    '{"ios":{"minSupported":"2147483648.0.0","latest":"2147483649.0.0"},"android":{"minSupported":"1.0.0","latest":"1.0.0"}}'::jsonb
+  )
+  and not app_config.valid_versions(
+    '{"ios":{"minSupported":"2147483649.0.0","latest":"2147483648.0.0"},"android":{"minSupported":"1.0.0","latest":"1.0.0"}}'::jsonb
+  ),
+  'SQL compares components beyond the signed 32-bit range without overflow'
+);
+select ok(
+  app_config.valid_versions(
+    '{"ios":{"minSupported":"9999999999999999999999999999999999999999.0.0","latest":"10000000000000000000000000000000000000000.0.0"},"android":{"minSupported":"1.0.0","latest":"1.0.0"}}'::jsonb
+  ),
+  'SQL compares very long decimal components without integer casts'
+);
+select ok(
+  app_config.valid_versions(
+    '{"ios":{"minSupported":"1.99.100","latest":"1.100.0"},"android":{"minSupported":"1.0.0","latest":"1.0.0"}}'::jsonb
+  ),
+  'SQL compares semantic versions lexicographically by numeric component'
+);
+select is(
+  app_config.semver_key('1.2.3'),
+  array[1, 2, 3],
+  'the original semver_key helper remains compatible'
+);
 
 select throws_ok($sql$
   update app_config.settings

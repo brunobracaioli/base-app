@@ -2,10 +2,16 @@ import { parse } from 'libpg-query';
 
 type ObjectNode = Record<string, unknown>;
 const auditInsert = /\binsert\s+into\s+"?audit"?\s*\.\s*"?events"?\b/i;
-const approvedSignatures = new Map([
-  ['app_config.set_setting', 'text,jsonb,text,text,text,timestamptz'],
-  ['ops.purge_expired', ''],
-  ['ops.purge_unconfirmed_users', ''],
+const approvedSignatures = new Map<string, ReadonlySet<string>>([
+  [
+    'app_config.set_setting',
+    new Set([
+      'text,jsonb,text,text,text,timestamptz',
+      'text,jsonb,text,text,text,timestamptz,bool',
+    ]),
+  ],
+  ['ops.purge_expired', new Set([''])],
+  ['ops.purge_unconfirmed_users', new Set([''])],
 ]);
 
 function object(value: unknown): ObjectNode {
@@ -42,7 +48,7 @@ function allowedFunction(value: unknown): boolean {
   const fn = object(value);
   const parameters = list(fn.parameters).map((entry) => object(object(entry).FunctionParameter));
   const signature = parameters.map((parameter) => typeName(parameter.argType)).join(',');
-  if (approvedSignatures.get(names(fn.funcname)) !== signature) return false;
+  if (!approvedSignatures.get(names(fn.funcname))?.has(signature)) return false;
   if (parameters.some((p) => !['FUNC_PARAM_DEFAULT', 'FUNC_PARAM_IN'].includes(String(p.mode)))) {
     return false;
   }

@@ -38,9 +38,14 @@ select set_eq(
   $$
     values (pg_catalog.to_regprocedure(
       'app_config.set_setting(text,jsonb,text,text,text,timestamptz)'
-    )::regprocedure::text)
+    )::regprocedure::text,
+    pg_catalog.to_regprocedure(
+      'app_config.set_setting(text,jsonb,text,text,text,timestamptz,boolean)'
+    )::regprocedure::text,
+    pg_catalog.to_regprocedure('app_config.read_setting(text)')::regprocedure::text,
+    pg_catalog.to_regprocedure('app_config.read_rollback_setting(text)')::regprocedure::text)
   $$,
-  'app_config_writer can execute only set_setting'
+  'app_config_writer can execute only the setters and narrow setting readers'
 );
 select ok(
   not has_table_privilege('app_config_admin', 'audit.events', 'SELECT'),

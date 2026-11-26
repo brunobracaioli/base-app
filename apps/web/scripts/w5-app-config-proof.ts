@@ -221,7 +221,7 @@ async function readDatabaseKeyAllowLists(pool: Pool): Promise<{
     `select pg_catalog.pg_get_functiondef(
        pg_catalog.to_regprocedure($1)::oid
      ) as definition`,
-    ['app_config.set_setting(text,jsonb,text,text,text,timestamptz)'],
+    ['app_config.set_setting(text,jsonb,text,text,text,timestamptz,boolean)'],
   );
   const functionDefinition = functionResult.rows[0]?.definition;
   if (typeof functionDefinition !== 'string') throw new ProofFailure('db.set_setting_catalog');

@@ -24,6 +24,16 @@ describe('core SQL audit write boundaries', () => {
         ),
       ),
     ).toEqual([]);
+    expect(
+      await lintAuditWrites(
+        routine(
+          'app_config.set_setting',
+          'security definer',
+          "''",
+          'p_key text, p_value jsonb, p_actor_type text, p_actor_ref text, p_correlation_id text, p_expected_updated_at timestamptz, p_force boolean',
+        ),
+      ),
+    ).toEqual([]);
   });
   it.each([
     insert,
@@ -34,6 +44,18 @@ describe('core SQL audit write boundaries', () => {
     routine('ops.purge_expired', 'security definer', "''", 'unexpected text'),
     routine('ops.record_audit_event'),
     routine('ops.purge_unconfirmed_users', 'security definer', "''", 'p_count integer'),
+    routine(
+      'app_config.set_setting',
+      'security definer',
+      "''",
+      'p_key text, p_value jsonb, p_actor_type text, p_actor_ref text, p_correlation_id text, p_expected_updated_at timestamptz, p_force text',
+    ),
+    routine(
+      'app_config.set_setting',
+      'security definer',
+      "''",
+      'p_key text, p_value jsonb, p_actor_type text, p_actor_ref text, p_correlation_id text, p_expected_updated_at timestamptz, p_force boolean, p_extra text',
+    ),
     routine('ops.purge_unconfirmed_users').replace('returns void', 'returns integer'),
     `${routine()}\n${insert}`,
     `/* create function ops.purge_expired() returns void language plpgsql security definer set search_path = '' as $$ */\n${insert}\n/* $$; */`,

@@ -10,16 +10,17 @@ select ok(
 );
 
 select ok(
-  (select count(*) = 11
+  (select count(*) = 12
       and bool_and(not rolcanlogin and not rolsuper and not rolcreatedb
                    and not rolcreaterole and not rolreplication and not rolbypassrls)
    from pg_catalog.pg_roles
    where rolname = any (array[
      'migrator', 'identity_system', 'privacy_system', 'app_config_system', 'platform_system',
      'ops', 'app_config_admin', 'audit_writer',
-     'audit_operator_writer', 'audit_reader', 'app_config_writer'
+     'audit_operator_writer', 'audit_reader', 'app_config_writer',
+     'app_config_history_reader'
    ])),
-  'Wave 2 capability roles are present, NOLOGIN, and unprivileged'
+  'core capability roles are present, NOLOGIN, and unprivileged'
 );
 
 select set_eq(
@@ -621,7 +622,8 @@ select ok(
       ('identity_system'::text), ('privacy_system'::text), ('app_config_system'::text),
       ('platform_system'::text), ('ops'::text), ('app_config_admin'::text),
       ('app_config_writer'::text), ('audit_writer'::text),
-      ('audit_operator_writer'::text), ('audit_reader'::text)
+      ('audit_operator_writer'::text), ('audit_reader'::text),
+      ('app_config_history_reader'::text)
     ) role_name(name)
     cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'])
       as privilege(name)
@@ -648,6 +650,7 @@ select ok(
 );
 select ok(
   not has_schema_privilege('app_config_admin', 'app_config', 'CREATE')
+  and not has_schema_privilege('app_config_history_reader', 'app_config', 'CREATE')
   and not has_schema_privilege('ops', 'ops', 'CREATE'),
   'function owners retain no temporary schema CREATE privilege'
 );
