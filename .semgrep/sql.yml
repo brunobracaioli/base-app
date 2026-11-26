@@ -17,7 +17,8 @@ rules:
         - '**/*.sql'
       exclude:
         - /apps/web/src/platform/audit/**
-        # Required SQL audit routines; the PostgreSQL AST gate validates the
-        # three exact signatures/context in the consolidated baseline.
+        # These required SQL audit routines write directly; the PostgreSQL AST
+        # gate validates the exact signatures and security context in both migrations.
         - /supabase/migrations/20261125175958_w2_supabase_compatibility_baseline.sql
+        - /supabase/migrations/20261126005523_w5_app_config_operations.sql
     pattern-regex: (?im)^\s*INSERT\s+INTO\s+"?audit"?\s*\.\s*"?events"?\b
