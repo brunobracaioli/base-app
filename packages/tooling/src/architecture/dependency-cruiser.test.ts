@@ -162,6 +162,13 @@ describe('dependency-cruiser architecture rules', () => {
         appConfigProviderPath,
         `import { subscribeApiAppGates } from '${importPath(appConfigProviderPath, 'apps/mobile/src/shared/api-client/index.ts')}';\nvoid subscribeApiAppGates;\n`,
       );
+      const appConfigProviderTestPath =
+        'apps/mobile/src/features/app-config/ui/app-config-provider.test.tsx';
+      writeFixture(
+        root,
+        appConfigProviderTestPath,
+        `import { publishApiAppGate } from '${importPath(appConfigProviderTestPath, 'apps/mobile/src/shared/api-client/index.ts')}';\nvoid publishApiAppGate;\n`,
+      );
       const appConfigReaderPath = 'apps/mobile/src/features/app-config/api/app-config-reader.ts';
       writeFixture(
         root,
@@ -185,7 +192,7 @@ describe('dependency-cruiser architecture rules', () => {
       writeFixture(
         root,
         sharedApiPath,
-        `import type { SessionPort } from '${importPath(sharedApiPath, 'apps/mobile/src/features/auth/model/auth-ports.ts')}';\nvoid ({} as SessionPort);\nexport type ApiClient = {};\nexport const subscribeApiAppGates = (): void => {};\n`,
+        `import type { SessionPort } from '${importPath(sharedApiPath, 'apps/mobile/src/features/auth/model/auth-ports.ts')}';\nvoid ({} as SessionPort);\nexport type ApiClient = {};\nexport const publishApiAppGate = (): void => {};\nexport const subscribeApiAppGates = (): void => {};\n`,
       );
       writeFixture(
         root,

@@ -114,7 +114,7 @@ const forbidden = [
     name: 'mobile-private-api-client-imports-only-from-core',
     severity: 'error',
     from: {
-      path: '^apps/mobile/src/(?!extensions/(?:api|registry|types)\\.ts$|extensions/api\\.test\\.tsx$|features/shell/ui/app-providers(?:\\.test)?\\.tsx$|features/auth/|composition/|shared/api-client/(?:index\\.ts|api-client\\.test\\.ts)$|features/app-config/(?:ui/app-config-provider\\.tsx|api/app-config-reader(?:\\.test)?\\.ts)$)',
+      path: '^apps/mobile/src/(?!extensions/(?:api|registry|types)\\.ts$|extensions/api\\.test\\.tsx$|features/shell/ui/app-providers(?:\\.test)?\\.tsx$|features/auth/|composition/|shared/api-client/(?:index\\.ts|api-client\\.test\\.ts)$|features/app-config/(?:ui/app-config-provider(?:\\.test)?\\.tsx|api/app-config-reader(?:\\.test)?\\.ts)$)',
     },
     to: { path: '^apps/mobile/src/shared/api-client/' },
   },
