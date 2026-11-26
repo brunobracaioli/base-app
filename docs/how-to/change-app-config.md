@@ -12,6 +12,17 @@ derivado.
 
 ## Pré-requisitos locais
 
+Prepare os pacotes compartilhados antes de carregar credenciais ou chaves no ambiente:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm --filter @base-app/config build
+pnpm --filter @base-app/contracts build
+```
+
+O executor usa esses artefatos já preparados; as etapas de assinatura/execução não
+instalam dependências nem executam builds. Repita a preparação quando atualizar o código.
+
 Configure os arquivos e variáveis conforme a etapa:
 
 - `APP_CONFIG_ADMIN_DATABASE_URL` e `APP_CONFIG_ADMIN_DATABASE_CA_CERT` são usados por
