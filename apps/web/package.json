@@ -7,7 +7,7 @@
     "build": "node scripts/next.mjs build",
     "start": "node scripts/next.mjs start",
     "lint": "eslint src scripts next.config.ts instrumentation.ts sentry.server.config.ts sentry.edge.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && pnpm run app-config:operator:typecheck",
     "test": "node scripts/test.mjs",
     "app-config:set": "tsx scripts/app-config/cli.ts set",
     "app-config:rollback": "tsx scripts/app-config/cli.ts rollback",
