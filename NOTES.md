@@ -2,33 +2,23 @@
 
 ## Status atual
 
-- **Fase:** onda 5 parcialmente entregue na branch `feat/w5-config-gates`,
-  worktree `/tmp/app-base-w5`. API e mobile implementados e verificados;
-  operação administrativa aguarda decisões de spec. A onda permanece ⬜.
-- **Base:** `main` local integrou a onda 4 validada (`c690f28`). Nenhum push,
-  PR, GitHub Actions, deploy ou alteração de banco hospedado.
-- **Verificação:** código `fa3ef94` passou os 18 gates de `ci:local` em checkout
-  limpo: 496 testes e um teste condicionado à conexão, lint, tipos, arquitetura,
-  formato, drift de OpenAPI/config e scans. Build web e exports Hermes Android/iOS
-  passaram. [Matriz de aceite](docs/plan/wave-5-verification.md).
-- **Provas reais:** pgTAP 238 asserções/12 arquivos; oito tabelas sem drift de
-  tipos; 24 checks no harness real e 24 checks HTTP com Next/Proxy e PostgreSQL
-  TLS. Manutenção bloqueou em 30,674 s e foi revertida sem deploy.
-- **Decisões pendentes:** leitores SQL restritos/force auditado, aprovação
-  assinada por duas pessoas fora de Actions, limite temporal real do mobile,
-  comparação SQL de versões e origem confiável do evento de rollback.
-  [Propostas concretas](docs/plan/wave-5-execution.md). A aprovação não foi presumida.
-- **Próximo passo:** concluir **a mesma onda 5**, após essas decisões: migration
-  aditiva, adapters e comandos executáveis de set/rollback, aprovação e testes
-  respectivos. Só depois iniciar a onda 6. O planejador puro já tem 19 testes;
-  esses testes não certificam uma operação ainda não implementada.
-- **Limpeza:** containers, volumes, rede, segredos/TLS e scratch da KVM, servidor
-  Next local e túnel SSH removidos; outros workloads preservados. Outra prova
-  real exige um fixture novo. Recibos em `.artifacts/w5-verification/` no
-  checkout principal.
-- **Histórico:** [onda 4](docs/plan/wave-4-verification.md) e
-  [fundação 1–3](docs/plan/waves-1-3-verification.md) concluídas localmente.
-  Contas, publicação e operação real dos derivados não são simuladas.
+- **Fase:** onda 5 ✅ concluída como código do template, branch `feat/w5-config-gates`
+  (`/tmp/app-base-w5`). O dono aprovou todas as pendências e a execução contínua
+  das ondas restantes; decisões em ADR 0017.
+- **Entregue:** configuração pública/cache/gates; polling mobile foreground de 60 s;
+  SQL restrito, CAS/force/auditoria; CLI com duas assinaturas e rollback validado.
+- **Gates:** código `8777573` aprovado em 18/18 gates, checkout limpo, 533 testes
+  e um teste condicionado separado. pgTAP 288/13; 38 checks CLI reais e 24 do
+  harness API/banco. Build web, exports Android/iOS e drifts aprovados.
+  [Matriz de aceite](docs/plan/wave-5-verification.md).
+- **Próximo passo:** integrar W5 localmente e executar onda 6: spikes de Auth e
+  Mailpit antes de modelo/adaptadores/UI. Continuar as ondas até completar o
+  código do template; contas, publicação e dispositivos não serão simulados.
+- **Recursos:** credenciais/planos/login do operador removidos. Stack descartável
+  Auth/Postgres/Mailpit da KVM permanece sob controle do gerente para W6;
+  será limpa ao fim da execução contínua. Outros workloads preservados.
+- **Operação:** sem push, PR, GitHub Actions, deploy ou banco hospedado alterado.
+  Evidências em `.artifacts/w5-completion/` no checkout principal.
 
 ## Roadmap
 
@@ -39,7 +29,7 @@
 | 2 | Baseline do Supabase | ✅ |
 | 3 | Casca do app mobile | ✅ |
 | 4 | Auth na API, perfil e consentimentos | ✅ |
-| 5 | Configuração remota e gates | ⬜ |
+| 5 | Configuração remota e gates | ✅ |
 | 6 | Login por e-mail no app | ⬜ |
 | 7 | Assinatura | ⬜ |
 | 8 | Feature de exemplo | ⬜ |
