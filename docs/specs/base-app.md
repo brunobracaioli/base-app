@@ -19,6 +19,15 @@
 
 ---
 
+## Uso como starter
+
+O objetivo de uso definido pelo dono em 2026-11-27 é permitir que alunos iniciem
+seus próprios apps a partir do código disponível. Esta spec descreve também a v1
+planejada; não é um inventário de funcionalidades já entregues. Consulte o
+[README](../../README.md) e o [NOTES](../../NOTES.md) para esse inventário e suas
+provas. O produto derivado segue seu próprio escopo, spec e plano: não precisa
+concluir todas as ondas do núcleo antes de desenvolver sua primeira funcionalidade.
+
 ## 1. Visão geral
 
 ### 1.1 Problema

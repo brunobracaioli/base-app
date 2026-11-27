@@ -7,8 +7,9 @@
 Fundações concluídas localmente em 2026-11-25: [evidências e critérios das ondas 1/2/3](waves-1-3-verification.md).
 Onda 4 concluída localmente em 2026-11-25: [aceites e evidências](wave-4-verification.md).
 Onda 5 concluída localmente: [verificação](wave-5-verification.md) e
-[decisões aprovadas](wave-5-execution.md), detalhadas no ADR 0017. O dono autorizou
-execução contínua das ondas restantes, preservando dependências e gates por onda.
+[decisões aprovadas](wave-5-execution.md), detalhadas no ADR 0017. Em 2026-11-27, o dono definiu como prioridade o uso da base pelos alunos e pediu
+somente a atualização de documentação. A autorização anterior de execução contínua
+não é uma instrução para continuar automaticamente este roadmap.
 O aceite segue o foco de template de desenvolvimento em base-app §2: código e
 provas locais são obrigatórios; contas, implantação e publicação do app derivado
 são etapas documentadas. Falhas do banco e contratos pendentes continuam bloqueando
@@ -22,7 +23,7 @@ o aceite do código correspondente.
 | 3 | Casca do app mobile (Expo Router, gates, i18n, tema, client, Sentry, EAS, extensões) | 0 | 1, 2 | ✅ |
 | 4 | Auth na API, perfil (`/v1/me`) e consentimentos | 1, 2 | 3 | ✅ |
 | 5 | Configuração remota e gates (app e servidor) | 3, 4 | — | ✅ |
-| 6 | Login por e-mail no app (código, senha, redefinição, troca, sessão cifrada, termos) | 5 | — | ⬜ |
+| 6 | Login por e-mail no app (código, senha, redefinição, troca, sessão cifrada, termos) | 5 | — | 🟡 Código verificado; QA nativa pendente |
 | 7 | Assinatura (SDK, paywall, restaurar, gerenciar; conferência no servidor) | 6 | — | ⬜ |
 | 8 | Feature de exemplo protegida por assinatura | 7 | 9 | ⬜ |
 | 9 | Exclusão de conta (API, app, página web) e site institucional | 7 | 8 | ⬜ |
@@ -40,9 +41,17 @@ flowchart LR
   W8 & W10 --> W11 --> W12
 ```
 
+## Uso deste roadmap
+
+Este plano descreve a evolução do núcleo, inclusive funcionalidades que ainda não
+estão implementadas. Ele não é o backlog obrigatório de um app derivado. Para o
+produto de um aluno, seguir o pedido atual, `AGENTS.bootstrap.md` e as specs/planos
+próprios do produto, conforme `AGENTS.md`.
+
 ## Como executar uma onda com um agente de código
 
-Uma onda por sessão, numa branch `feat/w<n>-<slug>`. Prompt padrão (Codex ou Claude Code):
+Somente quando a manutenção do núcleo for solicitada explicitamente, executar uma
+onda por vez numa branch `feat/w<n>-<slug>`. Prompt de manutenção (Codex ou Claude Code):
 
 > Execute a onda `<n>` de `docs/plan/implementation-waves.md`, seguindo `AGENTS.md`. Leia
 > antes as specs e ADRs citados na onda. Faça só o escopo da onda. Comece pelos contratos

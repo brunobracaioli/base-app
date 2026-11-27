@@ -1,9 +1,15 @@
 # Desenvolver a partir do template
 
-Este guia ajuda a clonar e executar o código-fonte do base-app. Ele cobre a casca local do
-site e do app mobile; não significa que os fluxos de produto estejam prontos. A lista de ondas,
-as specs e o estado validado continuam em [NOTES.md](../../NOTES.md) e no
-[plano de implementação](../plan/implementation-waves.md).
+Este guia orienta o primeiro uso do starter. Comece pelo inventário do
+[README](../../README.md), que separa implementação, configuração e trabalho futuro.
+O [NOTES](../../NOTES.md) registra o estado verificado; o roadmap do núcleo não é
+uma lista obrigatória de tarefas para o produto do aluno.
+
+Na cópia do aluno, personalize `packages/config/src/product.config.ts` e registre
+a ideia/primeiro fluxo em `AGENTS.bootstrap.md`, seguindo o
+[modelo do derivado](../reference/AGENTS.bootstrap.example.md). O agente deve escrever
+a spec do produto e trabalhar na funcionalidade pedida, preservando os controles
+da base. Não precisa implementar cobrança ou concluir as ondas futuras para começar.
 
 ## Ferramentas e instalação
 
@@ -50,7 +56,7 @@ mobile.
 
 ## Abrir a casca mobile
 
-Com a onda 3 integrada, inicie o servidor Expo na raiz:
+Inicie o servidor Expo na raiz:
 
 ```bash
 pnpm --filter mobile start
@@ -62,10 +68,15 @@ com os módulos nativos deste app. Um build nativo local pode ser iniciado com
 `pnpm --filter mobile android` ou `pnpm --filter mobile ios`; esses comandos exigem a
 toolchain da plataforma e não são builds EAS nem builds de loja.
 
+Após instalar o development client, abra nele o projeto servido pelo Metro. Ficar
+na tela do Expo DevLauncher não significa que o app foi aberto. O telefone/emulador
+precisa alcançar o endereço de desenvolvimento com a configuração de rede apropriada.
+
 O registro mobile começa vazio em `apps/mobile/src/extensions/index.ts`. O site também começa
-com os registros de extensão vazios. Sem variáveis de integração, a casca pode ser aberta para
-examinar navegação, idioma, tema e estados da interface. A faixa de sem conexão só informa o
-estado visto pelo NetInfo; ela não implementa armazenamento ou operações offline.
+com os registros de extensão vazios. Sem variáveis de integração,
+o runtime de Auth retorna indisponibilidade; nenhum login é simulado. A existência
+das telas, temas e idiomas não comprova um login conectado. A preservação de sessão
+em falhas temporárias de rede não transforma toda funcionalidade em operação offline.
 
 Se precisar configurar variáveis públicas do app, o arquivo local fica em
 `apps/mobile/.env.local`, que o Expo carrega a partir da pasta do app:
@@ -81,11 +92,16 @@ configure esse endpoint separadamente sem desativar ATS ou permitir tráfego em 
 
 ## O que ainda requer configuração do app derivado
 
-Supabase Auth e RevenueCat precisam de projetos e configuração próprios para um app derivado.
-As variáveis públicas correspondentes estão reservadas no exemplo mobile, mas isso não ativa
-fluxos: login ainda não está implementado (onda 6) e compra/restore/paywall ainda não estão
-implementados (onda 7). Telas reservadas não são prova dessas funcionalidades. Exclusão de conta
-e exportação de dados pertencem às ondas 9 e 10.
+O login por e-mail está implementado no código W6, mas exige Supabase Auth e a API
+configurados para o produto. No app, os campos públicos são
+`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` e
+`EXPO_PUBLIC_API_URL`; no servidor, seguir a seção de perfil/consentimentos abaixo.
+Use somente chave pública no app e HTTPS alcançável pelo aparelho.
+
+RevenueCat ainda é uma evolução planejada: não é necessário criar essa conta para
+começar a explorar a base. Compra, restore e paywall ainda não estão implementados.
+Exclusão de conta completa e exportação de dados também continuam planejadas.
+Telas reservadas e variáveis vazias não comprovam essas funcionalidades.
 
 `pnpm bootstrap:init` pertence à onda 11; não é necessário para clonar, instalar ou abrir a
 casca deste repositório. Provisionar projeto, configurar contas EAS/lojas e fazer builds ou
@@ -98,7 +114,8 @@ código-fonte do template.
    `packageManager`.
 2. Faça a instalação congelada e confirme que `pnpm --filter web dev` serve a página local.
 3. Com um development client local disponível, rode `pnpm --filter mobile start` e abra a
-   casca sem credenciais de Supabase ou RevenueCat. Confira os registros de extensão vazios.
+   tela inicial. Registre separadamente se abriu só o DevLauncher, se abriu a interface
+   e se conseguiu usar o login conectado; são resultados diferentes.
 4. Rode os gates locais existentes: `pnpm turbo run lint typecheck test`,
    `pnpm --filter web build` e `pnpm architecture:check`. Para o gate integral e seu recibo,
    siga [Executar a bateria local ou numa KVM](local-quality-gate.md).
@@ -119,5 +136,6 @@ O URL do Supabase usa HTTPS; HTTP de loopback é aceito somente em dev/test.
 Sem essas integrações, uma rota protegida falha fechada; a página básica e
 o build continuam disponíveis. Nunca use chave administrativa no runtime.
 
-Veja a [prova da onda 4](../plan/wave-4-verification.md). O login completo do
-app mobile continua na onda 6; esta entrega é a API e seus contratos.
+Veja a [prova da onda 4](../plan/wave-4-verification.md). O código de login mobile
+está descrito na [verificação W6](../plan/wave-6-verification.md). O smoke nativo
+completo ainda não foi aprovado; prepare e confira esse caminho no ambiente da aula.

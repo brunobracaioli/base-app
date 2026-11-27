@@ -2,39 +2,26 @@
 
 ## Status atual
 
-- **Fase:** onda 6 em implementação na branch `feat/w6-email-auth`, worktree
-  persistente `.worktrees/w6`. Onda 5 integrada localmente à `main` em `6387bc3`.
-  O dono autorizou a execução contínua das ondas restantes, com integração e
-  verificação por onda; decisões anteriores preservadas no ADR 0017.
-- **Entregue:** configuração pública/cache/gates; polling mobile foreground de 60 s;
-  SQL restrito, CAS/force/auditoria; CLI com duas assinaturas e rollback validado.
-- **Gates:** código `8777573` aprovado em 18/18 gates, checkout limpo, 533 testes
-  e um teste condicionado separado. pgTAP 288/13; 38 checks CLI reais e 24 do
-  harness API/banco. Build web, exports Android/iOS e drifts aprovados.
-  [Matriz de aceite](docs/plan/wave-5-verification.md).
-- **Próximo passo:** fechar as correções da revisão final de Auth, executar os
-  gates integrados e consolidar W6 em commit local; depois, onda 7. O dono
-  reiterou em 2026-11-27 a autorização para finalizar todas as ondas do template.
-- **W6:** planos B dos spikes selecionados: cadastro por OTP antes da senha e
-  OTP 10/300/10; migration e Auth/Mailpit verificados. Após as correções,
-  189 testes mobile e 435 dos demais pacotes passaram; um teste condicionado
-  permanece separado. Lint, tipos, arquitetura e formato aprovados; build web
-  e tipos Kysely sem drift aprovados. pgTAP passou 294/14 após corrigir o isolamento de três
-  testes que dependiam da ausência de histórico do cron; histórico preservado.
-  Restauração offline de token expirado, reconexão/consentimentos, exposição
-  do SDK na fachada e CTA de cadastro com método desligado foram corrigidos
-  com regressões. Revisão final e gates do commit integrado pendentes.
-  Emulador concluiu boot; Maestro e harness HTTPS preparados, fluxos nativos
-  ainda sem resultado. [Verificação em andamento](docs/plan/wave-6-verification.md).
-  W6 permanece ⬜ até concluir a verificação.
-- **Recursos:** credenciais/planos/login do operador removidos. Stack descartável
-  Auth/Postgres/Mailpit da KVM permanece sob controle do gerente para W6;
-  será limpa ao fim da execução contínua. Outros workloads preservados.
-- **Operação:** sem push, PR, GitHub Actions, deploy ou banco hospedado alterado.
-  Evidências em `.artifacts/w5-completion/` no checkout principal.
-  Handoffs e provas parciais W6 em `.artifacts/recovery/w6/` no mesmo checkout.
-  Um reinício apagou `/tmp`; ferramentas e worktrees foram recuperadas em
-  diretórios persistentes. Não reutilizar os caminhos temporários antigos.
+- **Objetivo atual:** starter para alunos desenvolverem seus próprios produtos.
+  A orientação do dono em 2026-11-27 substitui a execução automática das ondas
+  restantes: preparar a documentação da base existente, sem novas funcionalidades.
+- **Código de referência:** `cb6a2da` integra a implementação W6 de login por e-mail,
+  sessão cifrada, perfil e consentimentos, sobre as ondas 0–5. O inventário está
+  no [README](README.md); as specs também contêm funcionalidades futuras.
+- **Verificação do código:** 624 testes aprovados e um condicionado não executado,
+  separado; CI local 18/18 com checkout limpo em `cb6a2da`; pgTAP 294/14, build web,
+  exports Android/iOS, arquitetura e tipos Kysely sem drift aprovados.
+  [Evidências e limites W6](docs/plan/wave-6-verification.md).
+- **Limite nativo:** APK debug x86_64 compilado e instalado no emulador, mas o
+  fluxo Maestro não chegou ao login. A última tentativa terminou com timeout no
+  Expo DevLauncher, sem a URL do projeto Metro. Nenhum fluxo nativo foi aprovado.
+  O APK de laboratório não é uma entrega configurada para os alunos.
+- **Próxima tarefa padrão:** entender o produto do aluno, registrar suas decisões
+  em `AGENTS.bootstrap.md` e escrever a spec da funcionalidade solicitada.
+  Só retomar o roadmap do núcleo mediante pedido explícito de manutenção da base.
+- **Operação:** contas, credenciais, endpoints HTTPS e builds de desenvolvimento
+  pertencem ao projeto derivado. Não houve deploy nem alteração de banco hospedado.
+  Código local, código publicado e serviços operacionais são estados distintos.
 
 ## Roadmap
 
@@ -46,7 +33,7 @@
 | 3 | Casca do app mobile | ✅ |
 | 4 | Auth na API, perfil e consentimentos | ✅ |
 | 5 | Configuração remota e gates | ✅ |
-| 6 | Login por e-mail no app | ⬜ |
+| 6 | Login por e-mail no app | 🟡 Código verificado; QA nativa pendente |
 | 7 | Assinatura | ⬜ |
 | 8 | Feature de exemplo | ⬜ |
 | 9 | Exclusão de conta e site institucional | ⬜ |
@@ -74,8 +61,9 @@
   sessão primária. Extensões são código confiável, sem garantia de sandbox.
 - **Operação futura:** valores continuam vazios nos `.env.example`. As contas e
   variáveis do derivado estão documentadas no guia e na referência. Não enviar
-  segredos pelo chat. S-TM-4 hospedado, EAS assinado e testes em dispositivo não
-  foram realizados; as evidências locais não são alegações de lançamento.
-- **Governança:** Actions está desativado. Rulesets e permissões de release devem
-  ser conferidos quando houver publicação. O repositório continua privado até
-  a v1; a intenção permanece publicá-lo como template MIT.
+  segredos pelo chat. S-TM-4 hospedado e EAS assinado não foram realizados; a validação completa
+  dos fluxos em dispositivo permanece pendente. As evidências locais não são
+  alegações de lançamento.
+- **Governança:** os gates são locais e o código tem licença MIT. Rulesets,
+  permissões e estado do GitHub devem ser conferidos na ação de publicação.
+  Não inferir publicação, deploy ou validação em loja a partir de um CI verde.

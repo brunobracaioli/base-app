@@ -4,9 +4,10 @@
 
 Em verificação final em 2026-11-27, na branch `feat/w6-email-auth`, worktree
 persistente `.worktrees/w6`. W5 está integrada na `main` em `6387bc3`.
-O dono autorizou a conclusão contínua das ondas restantes; os gates e a ordem
-de dependências continuam obrigatórios. Sem push, PR, deploy ou alteração de
-serviço hospedado.
+A implementação foi consolidada em `cb6a2da`. Depois, o dono priorizou o starter
+para alunos e solicitou somente sua documentação; as ondas futuras não são uma
+obrigação automática. A QA nativa permanece pendente. Não houve deploy nem alteração
+de serviço hospedado.
 
 ## Evidências observadas
 
@@ -22,9 +23,9 @@ serviço hospedado.
 | Preservação do histórico | Dois eventos existentes antes e depois da suíte; hashes dos eventos preexistentes intactos |
 | Tipos Kysely | Oito tabelas introspectadas com TLS validado; arquivo gerado sem drift |
 | Build web | Next.js 16.4.6, build de produção aprovado |
-| Semgrep preliminar | Sem achados nos arquivos rastreados; a execução final cobrirá o commit integrado |
-| Android | ADB dedicado e emulador com boot completo; Maestro 2.12.1 verificado; harness HTTPS preparado, sem alegar fluxo nativo aprovado antes da execução |
-| Gates completos e revisão final | Pendentes do recheck e do commit integrado |
+| Segurança e CI local | 18/18 gates aprovados em `cb6a2da`, checkout limpo e recibo atestável; inclui Semgrep, Gitleaks, OSV e Zizmor |
+| Android | APK debug de fixture x86_64 compilado e instalado em AVD API36; a tentativa Maestro terminou com timeout124 no DevLauncher, sem abrir Welcome nem exercitar Auth |
+| Revisão final | Achados anteriores corrigidos e rechecados em `cb6a2da`; QA nativa não aprovada |
 
 Os recibos sanitizados ficam em `.artifacts/recovery/w6/` no checkout principal.
 `receipts/auth-acceptance-final.json` registra as provas anteriores de Auth;
@@ -48,7 +49,7 @@ desativado. A reconexão agora revalida antes de buscar perfil, inclusive com
 consentimento previamente carregado, retoma após falha transitória e limita
 eventos de sessão gerados pela própria renovação. O runtime gerenciado pelo
 bootstrap também é exercitado pelos testes, além dos casos com injeção.
-O aceite final ainda depende do recheck e dos gates do commit integrado.
+O recheck e os gates do código passaram em `cb6a2da`; isso não fecha a prova nativa.
 
 A tentativa de reproduzir a inicialização com o cliente auth-js real dentro
 do Jest excedeu o timeout no lock de inicialização. Esse teste instável foi
@@ -58,9 +59,12 @@ execução do SDK contra a rede; as provas reais de Auth e nativas são separada
 
 ## Limites de aceite
 
-O build Android e os exports não substituem execução no dispositivo. A prova
-nativa está sendo preparada com Auth, JWT, banco e handlers reais do
-laboratório. Quando portas de infraestrutura forem injetadas pelo harness,
-o resultado deve identificá-las e não alegar validação do serviço hospedado.
+O build Android e os exports não substituem execução no dispositivo. O harness
+usou Auth/JWT/banco/handlers reais e fakes declarados de rate limit e marcador
+de exclusão; não validou Upstash/CDN. O app permaneceu no Expo DevLauncher
+aguardando a URL do projeto Metro. Não houve fluxo de login aprovado pelo Maestro.
+O APK de fixture apontava para um harness local que foi encerrado; não deve ser
+entregue aos alunos como app configurado. Usuários/mensagens de teste e processos
+nativos próprios foram limpos. Os artefatos privados não fazem parte do repositório.
 Contas externas, assinatura EAS, lojas e publicação permanecem no checklist
 do app derivado, conforme `base-app.md` §2.

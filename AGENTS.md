@@ -1,18 +1,32 @@
 # base-app — instruções para agentes de código
 
-Template gratuito de app mobile (iOS + Android) com login por e-mail, assinatura pelo
-RevenueCat, exclusão de conta, exportação de dados e atualização obrigatória. Vale para
-qualquer agente de código (Codex, Claude Code) e para pessoas.
+Template de desenvolvimento para alunos criarem seus próprios apps mobile (iOS + Android).
+O inventário do código disponível e os limites estão no `README.md` e no `NOTES.md`.
+Assinaturas, exclusão, exportação e outras partes do roadmap não devem ser anunciadas como
+prontas só porque estão especificadas. Vale para agentes (Codex, Claude Code) e pessoas.
 
 Se existir `AGENTS.bootstrap.md` na raiz, este repositório é uma versão derivada: leia também
 aquele arquivo. Ele complementa este e prevalece em caso de conflito.
 
 ## Antes de qualquer tarefa
 
-1. Leia `NOTES.md` (status atual e próxima onda).
-2. Leia `docs/plan/implementation-waves.md` e faça **só** o escopo da onda em andamento.
-3. Leia `docs/specs/base-app.md` (spec principal) e a spec da área que vai mexer.
-4. Leia os ADRs citados pela spec em `docs/adr/`.
+1. Leia `README.md` e `NOTES.md`; confirme no código da revisão em uso o que já existe.
+2. Identifique o objetivo do pedido: desenvolver o produto do usuário ou manter o núcleo
+   deste template. O pedido atual do usuário define essa prioridade.
+3. Para um **produto derivado**, leia `AGENTS.bootstrap.md` se existir. Se ainda não existir,
+   registre ali as decisões do produto usando o modelo em
+   `docs/reference/AGENTS.bootstrap.example.md`, sem substituir instruções já existentes.
+   Escreva/revise a spec da funcionalidade pedida e o plano próprio do produto. As ondas da
+   base são referência histórica; não são tarefas automáticas nem pré-requisito para começar.
+4. Para **manutenção explicitamente solicitada do núcleo**, leia
+   `docs/plan/implementation-waves.md` e siga somente a onda/alteração autorizada. Não deduza
+   autorização para continuar funcionalidades futuras a partir de um pedido sobre o produto.
+5. Em ambos os modos, leia `docs/specs/base-app.md`, a spec da área alterada e seus ADRs.
+
+Ao apresentar o que a base oferece, separe: implementação presente, configuração externa
+necessária, testes realmente executados e trabalho planejado. Sem credenciais, não simule
+login ou cobrança; um export não comprova execução em aparelho. Use o escopo do usuário
+para escolher a próxima funcionalidade, preservando os controles de segurança abaixo.
 
 Código sem spec correspondente não entra. Se a spec estiver errada ou incompleta, pare,
 descreva o problema e proponha a mudança na spec antes de codar.
@@ -26,7 +40,7 @@ descreva o problema e proponha a mudança na spec antes de codar.
 | API + site | Next.js (App Router) na Vercel, em `apps/web` |
 | Auth | Supabase Auth; a API verifica o JWT por JWKS (`jose`) |
 | Banco | Supabase Postgres; migrations SQL (Supabase CLI); Kysely; RLS; `pg_cron` |
-| Cobrança | RevenueCat (SDK + paywall remoto + API REST) |
+| Cobrança planejada | RevenueCat (integração ainda não implementada; adicionar conforme o produto) |
 | Rate limit, cota, cache | Upstash Redis |
 | E-mail | Resend (SMTP do Supabase Auth e API) |
 | Validação | Zod (contratos em `packages/contracts`) |
@@ -117,7 +131,9 @@ Detalhes em `docs/specs/base-app.md` §3.3.
 
 ## Fluxo de trabalho
 
-- Uma onda do plano por vez, numa branch `feat/wave-<n>-<slug>` (ou `docs/`, `chore/`).
+- No núcleo, uma onda/alteração autorizada por vez, numa branch `feat/wave-<n>-<slug>`
+  (ou `docs/`, `chore/`). No derivado, siga a spec e o plano do produto do usuário;
+  a existência de ondas pendentes da base não obriga sua execução.
 - Antes de dar uma onda como pronta: rode os gates da onda (lint, typecheck, testes, pgTAP,
   dependency-cruiser, drift de contrato e de tipos) e confira cada critério de aceite.
 - Atualize `NOTES.md` (status e próxima onda) ao fim de cada onda.
@@ -131,7 +147,8 @@ Textos do app via i18n.
 
 ## Comandos
 
-Definidos na onda 0. Previstos:
+Comandos existentes; os de banco exigem ambiente local descartável configurado.
+`mobile start` inicia Metro para development client, não instala um app nem usa Expo Go:
 
 ```bash
 pnpm install

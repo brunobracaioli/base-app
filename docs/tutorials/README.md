@@ -1,8 +1,11 @@
 # Tutoriais
 
-Aprendizado guiado, na ordem. Cada tutorial parte do resultado do anterior e termina com algo
-que funciona. O conteúdo de cada um é escrito na onda de implementação correspondente
-([plano de ondas](../plan/implementation-waves.md)).
+Para começar agora, use o [guia do starter](../how-to/develop-from-template.md) e o
+[inventário do README](../../README.md).
+
+A tabela abaixo é um roteiro didático planejado para a evolução da base. Ela não
+indica que todos os tutoriais ou suas funcionalidades já foram entregues, nem obriga
+o aluno a concluí-los antes de trabalhar na sua ideia.
 
 | # | Tutorial | Resultado |
 |---|----------|-----------|
@@ -17,11 +20,14 @@ que funciona. O conteúdo de cada um é escrito na onda de implementação corre
 
 ## Pré-requisitos gerais
 
-- Conta no GitHub, Supabase, Vercel, Expo, RevenueCat e Resend. Apple Developer e Google Play
-  Console só são necessários a partir do tutorial 6.
+- Para explorar o código e a página local: Node/pnpm nas versões do repositório.
+- Para o app mobile: development client e toolchain/aparelho compatível.
+- Configurar contas externas conforme o fluxo escolhido. Supabase/API são necessários
+  ao login; RevenueCat pertence à futura integração de cobrança. Contas de lojas e
+  publicação não são requisito para começar a personalizar o starter.
 - Conhecimento básico de TypeScript e de linha de comando.
 
 ## Depois dos tutoriais
 
 - Tarefas específicas: [how-to/](../how-to/README.md).
-- Por que o template é assim: [explanation/](../explanation/why-this-architecture.md).
+- Por que o template é assim: [decisões arquiteturais](../adr/).
