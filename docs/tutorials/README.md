@@ -1,7 +1,9 @@
 # Tutoriais
 
-Para começar agora, use o [guia do starter](../how-to/develop-from-template.md) e o
-[inventário do README](../../README.md).
+**Comece por aqui: [primeira hora](primeira-hora.md).** Do zero ao app no celular pelo Expo Go,
+com login de verdade num backend local só seu (`pnpm dev`), sem contas de backend (iPhone pede
+uma conta Expo grátis). Depois, use o
+[guia do starter](../how-to/develop-from-template.md) e o [inventário do README](../../README.md).
 
 A tabela abaixo é um roteiro didático planejado para a evolução da base. Ela não
 indica que todos os tutoriais ou suas funcionalidades já foram entregues, nem obriga
@@ -21,7 +23,8 @@ o aluno a concluí-los antes de trabalhar na sua ideia.
 ## Pré-requisitos gerais
 
 - Para explorar o código e a página local: Node/pnpm nas versões do repositório.
-- Para o app mobile: development client e toolchain/aparelho compatível.
+- Para o app mobile: Expo Go no celular (SDK 58) e Docker Desktop para o backend local. O
+  development client só é necessário para módulos nativos fora do Expo Go e builds de loja.
 - Configurar contas externas conforme o fluxo escolhido. Supabase/API são necessários
   ao login; RevenueCat pertence à futura integração de cobrança. Contas de lojas e
   publicação não são requisito para começar a personalizar o starter.

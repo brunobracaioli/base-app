@@ -20,9 +20,55 @@ const httpsUrlSchema = z.url().refine((value) => {
   }
 });
 
+const ipv4OctetPattern = /^(?:0|[1-9]\d{0,2})$/;
+
+/** Loopback or private IPv4 (RFC 1918) host: the student's own machine on the local network. */
+export function isLocalNetworkHostname(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (normalized === 'localhost' || normalized === '::1') return true;
+  const parts = normalized.split('.');
+  if (parts.length !== 4 || !parts.every((part) => ipv4OctetPattern.test(part))) return false;
+  const octets = parts.map(Number);
+  if (octets.some((octet) => octet > 255)) return false;
+  const [first, second] = octets as [number, number, number, number];
+  return (
+    first === 127 ||
+    first === 10 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+function isDevelopmentBundle(): boolean {
+  return typeof __DEV__ !== 'undefined' && __DEV__;
+}
+
+/**
+ * HTTPS always. Cleartext HTTP only in a development bundle (`__DEV__`) and only for a
+ * loopback/private-network host without credentials, query or fragment, so a student can
+ * point Expo Go at the local backend. Release bundles keep requiring HTTPS.
+ */
+const serviceUrlSchema = z.url().refine((value) => {
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'https:') return true;
+    return (
+      url.protocol === 'http:' &&
+      isDevelopmentBundle() &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      isLocalNetworkHostname(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+});
+
 export const corePublicEnvSchema = z.strictObject({
-  EXPO_PUBLIC_API_URL: httpsUrlSchema.optional(),
-  EXPO_PUBLIC_SUPABASE_URL: httpsUrlSchema.optional(),
+  EXPO_PUBLIC_API_URL: serviceUrlSchema.optional(),
+  EXPO_PUBLIC_SUPABASE_URL: serviceUrlSchema.optional(),
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
   EXPO_PUBLIC_REVENUECAT_IOS_KEY: z.string().min(1).optional(),
   EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: z.string().min(1).optional(),

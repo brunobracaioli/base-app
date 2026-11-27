@@ -97,7 +97,7 @@ export function buildMobileExpoConfig(environment: MobileConfigEnvironment): Exp
     name: product.displayName,
     slug: product.slug,
     scheme: product.scheme,
-    version: '0.0.0',
+    version: '1.0.0',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
     platforms: ['ios', 'android'],

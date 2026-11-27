@@ -1,9 +1,9 @@
-import * as Application from 'expo-application';
 import * as Sentry from '@sentry/react-native';
 import { Platform } from 'react-native';
 
 import { unavailableSessionPort } from '../../features/auth/model/auth-ports';
 import { translateMobile } from '../i18n';
+import { resolveAppVersion } from '../runtime/app-runtime';
 import { addAppBreadcrumb } from '../telemetry/sentry';
 import { publishApiAppGate } from './app-gate-events';
 import {
@@ -85,7 +85,7 @@ function getDefaultClient(): ApiClient {
 
   defaultClient = createApiClient({
     baseUrl: process.env.EXPO_PUBLIC_API_URL ?? '',
-    appVersion: Application.nativeApplicationVersion ?? '0.0.0',
+    appVersion: resolveAppVersion(),
     platform: Platform.OS,
     fetch: globalThis.fetch,
     session: activeApiSession(),

@@ -1,4 +1,3 @@
-import * as Application from 'expo-application';
 import { useNetInfo } from '@react-native-community/netinfo';
 import React, {
   createContext,
@@ -14,6 +13,7 @@ import { ActivityIndicator, AppState, Platform, Text, View } from 'react-native'
 import type { AppConfigResponseValue, PlatformValue } from '@base-app/contracts';
 import { subscribeApiAppGates } from '../../../shared/api-client';
 import { translateMobile } from '../../../shared/i18n';
+import { resolveAppVersion } from '../../../shared/runtime/app-runtime';
 import { createDefaultAppConfig } from '../model/default-app-config';
 import { evaluateGate, type AppConfigGate } from '../model/evaluate-gate';
 import { readAppConfig, type AppConfigReader } from '../api/app-config-reader';
@@ -61,7 +61,7 @@ export function AppConfigProvider({
   children,
   reader = readAppConfig,
   cache = appConfigCache,
-  appVersion = Application.nativeApplicationVersion ?? '0.0.0',
+  appVersion = resolveAppVersion(),
   platform = resolveNativePlatform(),
   onlineOverride,
   foregroundOverride,

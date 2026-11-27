@@ -94,6 +94,80 @@ describe('mobile extension composition', () => {
   });
 });
 
+describe('local development service URLs', () => {
+  const globals = globalThis as unknown as { __DEV__: boolean };
+  const originalDev = globals.__DEV__;
+
+  afterEach(() => {
+    globals.__DEV__ = originalDev;
+  });
+
+  it.each([
+    'http://192.168.0.10:3000',
+    'http://10.0.2.2:54321',
+    'http://172.20.1.5:3000',
+    'http://127.0.0.1:54321',
+    'http://localhost:3000',
+    'http://[::1]:3000',
+  ])('accepts cleartext %s for a private host in a development bundle', (url) => {
+    globals.__DEV__ = true;
+
+    const publicEnv = composeMobileExtensions([], {
+      EXPO_PUBLIC_API_URL: url,
+      EXPO_PUBLIC_SUPABASE_URL: url,
+    }).publicEnv;
+
+    expect(publicEnv.EXPO_PUBLIC_API_URL).toBe(url);
+    expect(publicEnv.EXPO_PUBLIC_SUPABASE_URL).toBe(url);
+  });
+
+  it.each([
+    'http://api.example.invalid',
+    'http://8.8.8.8:3000',
+    'http://172.32.0.1:3000',
+    'http://192.169.0.1:3000',
+    'http://user:pass@192.168.0.10:3000',
+    'http://192.168.0.10:3000/?token=x',
+    'http://192.168.0.10:3000/#fragment',
+  ])('rejects cleartext %s in a development bundle', (url) => {
+    globals.__DEV__ = true;
+
+    expect(() => composeMobileExtensions([], { EXPO_PUBLIC_API_URL: url })).toThrow(
+      MobileExtensionError,
+    );
+  });
+
+  it('rejects cleartext private hosts outside a development bundle', () => {
+    globals.__DEV__ = false;
+
+    expect(() =>
+      composeMobileExtensions([], { EXPO_PUBLIC_API_URL: 'http://192.168.0.10:3000' }),
+    ).toThrow(MobileExtensionError);
+    expect(() =>
+      composeMobileExtensions([], { EXPO_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321' }),
+    ).toThrow(MobileExtensionError);
+  });
+
+  it.each([true, false])('accepts HTTPS service URLs when __DEV__ is %s', (development) => {
+    globals.__DEV__ = development;
+
+    expect(
+      composeMobileExtensions([], {
+        EXPO_PUBLIC_API_URL: 'https://api.example.invalid',
+        EXPO_PUBLIC_SUPABASE_URL: 'https://project.supabase.example',
+      }).publicEnv.EXPO_PUBLIC_API_URL,
+    ).toBe('https://api.example.invalid');
+  });
+
+  it('keeps the Sentry DSN HTTPS-only even in a development bundle', () => {
+    globals.__DEV__ = true;
+
+    expect(() =>
+      composeMobileExtensions([], { EXPO_PUBLIC_SENTRY_DSN: 'http://192.168.0.10:9000/1' }),
+    ).toThrow(MobileExtensionError);
+  });
+});
+
 it('treats blank optional core values from the env example as unconfigured', () => {
   expect(
     composeMobileExtensions([], {

@@ -44,7 +44,7 @@ Não funcionais:
 | SH-N8 | **Proteção de tela:** as telas do código de login, de reautenticação e de exportação de dados usam `usePreventScreenCapture` (`expo-screen-capture`): sem captura e sem miniatura no seletor de apps |
 | SH-N9 | **E-mail e código nunca vão em parâmetro de rota.** Passam por um store em memória do fluxo de login (`useAuthFlowStore`); o Sentry descarta parâmetros de navegação nos breadcrumbs (`beforeBreadcrumb`). Teste estático: nenhum `router.push`/`href` com `email` ou `code` nos params |
 | SH-N10 | **`Linking.openURL` só pelo helper `openExternalUrl(url)`**: exige `https:` e host na allowlist (origem web de `product.config.ts`, `apps.apple.com`, `play.google.com` e `*.revenuecat.com`/`*.rev.cat` para o paywall); `managementURL` de SDK fora da allowlist cai no link público da loja. Lint barra `Linking.openURL` fora do helper |
-| SH-N11 | **Sem tráfego em texto claro:** `usesCleartextTraffic: false` no Android e nenhuma exceção de ATS (`NSAllowsArbitraryLoads` ausente) no iOS. Teste sobre o `app.config.ts` resolvido na onda 3 e sobre o manifesto do build de release na onda 12 |
+| SH-N11 | **Sem tráfego em texto claro:** `usesCleartextTraffic: false` no Android e nenhuma exceção de ATS (`NSAllowsArbitraryLoads` ausente) no iOS. Teste sobre o `app.config.ts` resolvido na onda 3 e sobre o manifesto do build de release na onda 12. **Exceção só de desenvolvimento:** num bundle com `__DEV__`, `EXPO_PUBLIC_API_URL` e `EXPO_PUBLIC_SUPABASE_URL` aceitam `http:` apenas para host loopback (`localhost`, `127.0.0.0/8`, `::1`) ou IPv4 privado (`10/8`, `172.16/12`, `192.168/16`), sem credenciais, query ou fragmento, para o Expo Go falar com o backend local na máquina do aluno. Bundle de release (`__DEV__` falso) recusa qualquer `http:`; `EXPO_PUBLIC_SENTRY_DSN` é sempre HTTPS (ADR 0002, emenda de 2026-11-27) |
 
 ## 3. Design técnico
 
@@ -116,6 +116,7 @@ src/app/
 │   │   ├── index.tsx            Início (feature de exemplo)
 │   │   └── settings.tsx         Configurações
 │   ├── settings/
+│   │   ├── _layout.tsx          pilha das configurações (protegida pelo guard do grupo)
 │   │   ├── account.tsx          nome, e-mail
 │   │   ├── change-email.tsx
 │   │   ├── change-password.tsx
@@ -131,7 +132,10 @@ src/app/
 
 Arquivos em `src/app/` só importam telas de `src/features/*/ui` e não têm lógica (regra de
 lint). Os grupos usam `Stack.Protected` com guards derivados do resolvedor de boot, então uma
-rota protegida não é alcançável por deep link sem passar pelos gates.
+rota protegida não é alcançável por deep link sem passar pelos gates. O guard vale em dois
+níveis: a raiz libera só o grupo que o resolvedor de boot permite (`resolveRouteGroupAccess`), e
+cada grupo protege as próprias telas. Toda subpasta de rotas dentro de um grupo protegido tem
+`_layout.tsx`, para ficar sob o `Stack.Screen` declarado no guard.
 
 ### 3.3 Client da API
 
@@ -140,7 +144,7 @@ rota protegida não é alcançável por deep link sem passar pelos gates.
 | Regra | Detalhe |
 |-------|---------|
 | Base URL | `EXPO_PUBLIC_API_URL` por ambiente |
-| Headers em **toda** requisição | `X-Request-Id` (UUID v7 novo por requisição, o mesmo no breadcrumb do Sentry; o servidor o registra só como `clientRequestId` e devolve o próprio `X-Request-Id`, que o app também põe no breadcrumb), `X-App-Version` (versão nativa de `expo-application`, não a do OTA) e `X-Platform` (`ios` ou `android`) |
+| Headers em **toda** requisição | `X-Request-Id` (UUID v7 novo por requisição, o mesmo no breadcrumb do Sentry; o servidor o registra só como `clientRequestId` e devolve o próprio `X-Request-Id`, que o app também põe no breadcrumb), `X-App-Version` (versão nativa de `expo-application`, não a do OTA; no Expo Go, a `version` do `app.config.ts`, porque a versão nativa é a do próprio Expo Go) e `X-Platform` (`ios` ou `android`) |
 | `Authorization` | access token atual **só** em rotas que o contrato não declara públicas (`security: []`); rotas públicas nunca recebem o token |
 | Timeout | 10 s (`AbortController`) |
 | Retry | só em GET: 2 tentativas, backoff exponencial com jitter, em erro de rede, 5xx e 429 (respeita `Retry-After`) |
@@ -167,7 +171,7 @@ Erros de rede e de contrato nunca mostram texto técnico ao usuário.
   escura); preferência `light | dark | system` no AsyncStorage (não é dado sensível).
 - **TanStack Query:** `focusManager` ligado ao `AppState` e `onlineManager` ao NetInfo; `staleTime`
   padrão de 30 s; as tentativas de repetição são do client HTTP, não do Query.
-- **Sentry (`@sentry/react-native`):** SH-N2; `beforeSend` com a mesma redaction da API
+- **Sentry (`@sentry/react-native`):** só inicializa com DSN configurado e fora do Expo Go (que não tem o módulo nativo); sem isso, o layout raiz não é envolvido por `Sentry.wrap`. SH-N2; `beforeSend` com a mesma redaction da API
   (`token`, `secret`, `password`, `authorization`, `code`, `email`).
 - **Sem conexão:** banner global (NetInfo); botões de ações que precisam de rede ficam
   desabilitados com explicação.
@@ -181,6 +185,10 @@ Erros de rede e de contrato nunca mostram texto técnico ao usuário.
 
 ### 3.6 Atualizações OTA e build
 
+- **Desenvolvimento:** `pnpm --filter mobile start` abre o projeto no **Expo Go** (`expo start
+  --go`), sem build nativo, enquanto o núcleo só usar módulos presentes no Expo Go do SDK
+  fixado. `start:dev-client` mantém o fluxo com development client, necessário para testar
+  OTA assinada, o manifesto nativo e qualquer módulo nativo que o produto acrescentar.
 - `expo-updates` com `runtimeVersion: { policy: 'fingerprint' }` e **um canal por ambiente**
   (`development`, `preview`, `production`).
 - **Code signing** (SH-N7): `codeSigningCertificate` e `codeSigningMetadata` em `app.config.ts`;
@@ -415,6 +423,9 @@ privados de `composition/`.
   helper; nenhum `email` ou `code` em params de rota; telas de código e exportação chamam
   `usePreventScreenCapture`.
 - `app.config.ts` resolvido: `usesCleartextTraffic: false` e nenhuma exceção de ATS.
+- Env público: `http:` de loopback ou rede privada aceito só com `__DEV__`; `http:` público,
+  com credenciais, query ou fragmento recusado; com `__DEV__` falso, qualquer `http:` recusado;
+  DSN do Sentry só HTTPS. No Expo Go, `X-App-Version` usa a versão do `app.config.ts`.
 
 **Componente (React Native Testing Library)**
 
@@ -448,6 +459,8 @@ privados de `composition/`.
 - [ ] Telas do código e da exportação têm proteção de captura; o arquivo de exportação é apagado;
       nenhum e-mail em parâmetro de rota; `openExternalUrl` é o único caminho para links externos.
 - [ ] O manifesto do build de release não permite tráfego em texto claro.
+- [ ] O app abre no Expo Go do SDK fixado (`pnpm --filter mobile start`) apontando para o backend
+      local por `http:` na rede privada; o mesmo `http:` é recusado num bundle de release.
 - [ ] Uma extensão fake usa `extensionAuth`, `withPreviousSession`, `useSessionSummary`,
       `extensionApiClient` e `SettingsItem` pela fachada, sem importar o cliente do Supabase (a
       regra de lint reprova a importação); o token de `withPreviousSession` não aparece em log,

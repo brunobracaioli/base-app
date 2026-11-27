@@ -10,11 +10,18 @@ const hostSchema = z
 const upstashUrlSchema = z.url().refine((value) => {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash;
+    return (
+      (url.protocol === 'https:' ||
+        (url.protocol === 'http:' && isLoopbackHostname(url.hostname))) &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash
+    );
   } catch {
     return false;
   }
-}, 'UPSTASH_REDIS_REST_URL must be an HTTPS origin without embedded credentials or query.');
+}, 'UPSTASH_REDIS_REST_URL must be an HTTPS origin (or a loopback HTTP origin in development) without embedded credentials or query.');
 
 function isLoopbackHostname(hostname: string): boolean {
   const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase();
@@ -94,43 +101,80 @@ export const SERVER_ENV_SCHEMA = z
   )
   .refine(
     (environment) =>
-      (environment.DATABASE_URL === undefined) === (environment.DATABASE_CA_CERT === undefined),
+      environment.DATABASE_CA_CERT === undefined || environment.DATABASE_URL !== undefined,
     {
       message: 'Both DATABASE_URL and DATABASE_CA_CERT must be configured together.',
       path: ['DATABASE_CA_CERT'],
     },
   )
   .superRefine((environment, context) => {
-    const supabaseUrl = environment.SUPABASE_URL;
-    if (!supabaseUrl) return;
+    const localRuntime = isLocalRuntime(environment);
 
-    let protocol: string;
-    try {
-      protocol = new URL(supabaseUrl).protocol;
-    } catch {
-      return;
-    }
-    if (protocol !== 'http:') return;
-
-    const localRuntime =
-      environment.VERCEL_ENV === 'development' ||
-      ((environment.NODE_ENV === 'development' || environment.NODE_ENV === 'test') &&
-        environment.VERCEL_ENV !== 'preview' &&
-        environment.VERCEL_ENV !== 'production');
-    if (!localRuntime) {
+    if (
+      environment.DATABASE_URL !== undefined &&
+      environment.DATABASE_CA_CERT === undefined &&
+      !(localRuntime && isLoopbackUrl(environment.DATABASE_URL))
+    ) {
       context.addIssue({
         code: 'custom',
-        message: 'SUPABASE_URL may use HTTP only in development or test.',
-        path: ['SUPABASE_URL'],
+        message:
+          'Both DATABASE_URL and DATABASE_CA_CERT must be configured together; only a loopback database in development or test may omit the CA.',
+        path: ['DATABASE_CA_CERT'],
       });
+    }
+
+    for (const key of ['SUPABASE_URL', 'UPSTASH_REDIS_REST_URL'] as const) {
+      const value = environment[key];
+      if (!value || localRuntime) continue;
+      let protocol: string;
+      try {
+        protocol = new URL(value).protocol;
+      } catch {
+        continue;
+      }
+      if (protocol === 'http:') {
+        context.addIssue({
+          code: 'custom',
+          message: `${key} may use HTTP only in development or test.`,
+          path: [key],
+        });
+      }
     }
   });
 
+/**
+ * Local runtime = `next dev`/tests on the developer machine. Vercel preview and production are
+ * never local, whatever NODE_ENV says.
+ */
+function isLocalRuntime(environment: {
+  readonly NODE_ENV?: string | undefined;
+  readonly VERCEL_ENV?: string | undefined;
+}): boolean {
+  if (environment.VERCEL_ENV === 'preview' || environment.VERCEL_ENV === 'production') return false;
+  return (
+    environment.VERCEL_ENV === 'development' ||
+    environment.NODE_ENV === 'development' ||
+    environment.NODE_ENV === 'test'
+  );
+}
+
+function isLoopbackUrl(value: string): boolean {
+  try {
+    return isLoopbackHostname(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
 export type ServerEnv = z.infer<typeof SERVER_ENV_SCHEMA>;
 
+/**
+ * `DATABASE_CA_CERT: null` exists only for the local development stack: a loopback database in
+ * development/test, reached without TLS. Every other database connection requires the CA.
+ */
 export type DatabaseEnvironment = {
   readonly DATABASE_URL: string;
-  readonly DATABASE_CA_CERT: string;
+  readonly DATABASE_CA_CERT: string | null;
 };
 
 export function parseServerEnv(
@@ -167,13 +211,16 @@ export function validateRuntimeEnvironment(
 }
 
 export function requireDatabaseEnvironment(env: ServerEnv): DatabaseEnvironment {
-  if (!env.DATABASE_URL || !env.DATABASE_CA_CERT) {
+  if (!env.DATABASE_URL) {
     throw new Error('DATABASE_URL and DATABASE_CA_CERT are not configured.');
   }
-  return {
-    DATABASE_URL: env.DATABASE_URL,
-    DATABASE_CA_CERT: env.DATABASE_CA_CERT,
-  };
+  if (env.DATABASE_CA_CERT) {
+    return { DATABASE_URL: env.DATABASE_URL, DATABASE_CA_CERT: env.DATABASE_CA_CERT };
+  }
+  if (isLocalRuntime(env) && isLoopbackUrl(env.DATABASE_URL)) {
+    return { DATABASE_URL: env.DATABASE_URL, DATABASE_CA_CERT: null };
+  }
+  throw new Error('DATABASE_URL and DATABASE_CA_CERT are not configured.');
 }
 
 export function requireAuditSubjectKey(env: ServerEnv): string {

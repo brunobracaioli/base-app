@@ -47,35 +47,26 @@ necessárias ao produto, sem assumir que tudo descrito nas specs já foi entregu
 
 ## Começar a partir da base
 
-Crie uma cópia ou fork do repositório para o seu produto. Na pasta da cópia, use as
-versões fixadas em `.nvmrc` e `package.json`:
+**Primeira vez? Siga o tutorial [primeira hora](docs/tutorials/primeira-hora.md):** do zero ao
+app no seu celular pelo Expo Go, com login de verdade num backend só seu, sem criar conta em
+serviço de backend (no iPhone, o Expo Go pede uma conta Expo grátis).
+
+Resumo, com Node 24, Docker Desktop ligado e o Expo Go no celular:
 
 ```bash
-nvm install
-nvm use
 corepack enable
-pnpm install --frozen-lockfile
+pnpm install
+pnpm dev
 ```
 
-Para abrir a página inicial da API/site local:
+O `pnpm dev` sobe, na sua máquina, o Supabase local (Auth, Postgres e uma caixa de e-mail onde
+chegam os códigos de login), um Redis local e a API, e mostra o QR code para o Expo Go. Os
+códigos de login chegam em `http://127.0.0.1:58324`. Detalhes, endereços e segurança:
+[ambiente local com `pnpm dev`](docs/how-to/local-dev-stack.md).
 
-```bash
-pnpm --filter web dev
-```
-
-Ela fica em `http://localhost:3000` e não exige contas externas para mostrar a página
-básica. Essa página não é uma versão web do app mobile nem prova de login funcionando.
-
-Para iniciar o servidor do app mobile:
-
-```bash
-pnpm --filter mobile start
-```
-
-O app usa **development client**, não Expo Go. É necessário ter um build de
-desenvolvimento instalado no aparelho/emulador e abrir o projeto servido pelo Metro.
-Iniciar o servidor, sozinho, não instala nem abre o app. O guia explica os comandos
-de build local e a configuração das integrações:
+O Expo Go serve para desenvolver enquanto o app não tiver módulo nativo fora dele. Para builds
+de loja, OTA assinada ou módulos nativos novos (por exemplo, RevenueCat), use o development
+client (`pnpm --filter mobile start:dev-client`) e siga
 [desenvolver a partir do template](docs/how-to/develop-from-template.md).
 
 Personalize nome, identificadores, scheme, idiomas e métodos de login em

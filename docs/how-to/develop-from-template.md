@@ -11,6 +11,15 @@ a ideia/primeiro fluxo em `AGENTS.bootstrap.md`, seguindo o
 a spec do produto e trabalhar na funcionalidade pedida, preservando os controles
 da base. Não precisa implementar cobrança ou concluir as ondas futuras para começar.
 
+## Caminho rápido: `pnpm dev`
+
+Para desenvolver com login de verdade sem criar contas de backend (o iPhone pede só uma conta
+Expo grátis), siga o tutorial
+[primeira hora](../tutorials/primeira-hora.md). Com Docker ligado, `pnpm dev` sobe um backend
+local só seu (Supabase Auth, Postgres, caixa de e-mail, Redis e a API) e abre o app no Expo Go.
+Detalhes e modelo de segurança: [ambiente local com `pnpm dev`](local-dev-stack.md). As seções
+abaixo descrevem as peças isoladas e o caminho para o backend hospedado.
+
 ## Ferramentas e instalação
 
 O repositório fixa Node.js `24.22.3` em `.nvmrc` e pnpm `12.23.0` em
@@ -62,15 +71,15 @@ Inicie o servidor Expo na raiz:
 pnpm --filter mobile start
 ```
 
-Esse script compila os pacotes de runtime e inicia o Metro com o fluxo de development client.
-Para abrir a interface, use um development client local já instalado. Expo Go não é compatível
-com os módulos nativos deste app. Um build nativo local pode ser iniciado com
-`pnpm --filter mobile android` ou `pnpm --filter mobile ios`; esses comandos exigem a
-toolchain da plataforma e não são builds EAS nem builds de loja.
+Esse script compila os pacotes de runtime e inicia o Metro para o **Expo Go** (`expo start
+--go`): leia o QR code com o Expo Go do SDK 58. O núcleo não usa módulo nativo fora do Expo Go
+([ADR 0002](../adr/0002-mobile-expo-react-native.md), emenda de 2026-11-27).
 
-Após instalar o development client, abra nele o projeto servido pelo Metro. Ficar
-na tela do Expo DevLauncher não significa que o app foi aberto. O telefone/emulador
-precisa alcançar o endereço de desenvolvimento com a configuração de rede apropriada.
+Quando o produto precisar de build de loja, OTA assinada ou um módulo nativo fora do Expo Go,
+use o development client: `pnpm --filter mobile start:dev-client`, com um build instalado por
+`pnpm --filter mobile android` ou `pnpm --filter mobile ios` (exigem a toolchain da plataforma;
+não são builds EAS nem de loja). Ficar na tela do Expo DevLauncher não significa que o app foi
+aberto.
 
 O registro mobile começa vazio em `apps/mobile/src/extensions/index.ts`. O site também começa
 com os registros de extensão vazios. Sem variáveis de integração,
@@ -85,14 +94,16 @@ Se precisar configurar variáveis públicas do app, o arquivo local fica em
 cp apps/mobile/.env.example apps/mobile/.env.local
 ```
 
-Mantenha esses campos sem valores até configurar o serviço do próprio app. Qualquer valor
-`EXPO_PUBLIC_*` é incorporado ao bundle e não pode ser secreto. A URL do client da API é
-validada para usar HTTPS. Este guia não define uma conexão HTTPS entre aparelho e servidor local;
-configure esse endpoint separadamente sem desativar ATS ou permitir tráfego em texto puro.
+O `pnpm dev` preenche esses campos para o backend local. Qualquer valor `EXPO_PUBLIC_*` é
+incorporado ao bundle e não pode ser secreto. As URLs da API e do Supabase exigem HTTPS; a única
+exceção é bundle de desenvolvimento (`__DEV__`) apontando para `localhost` ou IP de rede
+privada, que é como o `pnpm dev` funciona. Builds de release continuam só com HTTPS, sem
+desativar ATS nem permitir tráfego em texto puro.
 
 ## O que ainda requer configuração do app derivado
 
-O login por e-mail está implementado no código W6, mas exige Supabase Auth e a API
+O login por e-mail está implementado no código W6. Localmente, `pnpm dev` fornece Supabase Auth
+e API sem contas externas; para usuários reais, exige Supabase Auth e a API hospedados e
 configurados para o produto. No app, os campos públicos são
 `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` e
 `EXPO_PUBLIC_API_URL`; no servidor, seguir a seção de perfil/consentimentos abaixo.
@@ -113,9 +124,9 @@ código-fonte do template.
 1. Confira `node --version` e `pnpm --version`; devem corresponder a `.nvmrc` e
    `packageManager`.
 2. Faça a instalação congelada e confirme que `pnpm --filter web dev` serve a página local.
-3. Com um development client local disponível, rode `pnpm --filter mobile start` e abra a
-   tela inicial. Registre separadamente se abriu só o DevLauncher, se abriu a interface
-   e se conseguiu usar o login conectado; são resultados diferentes.
+3. Rode `pnpm dev`, leia o QR code com o Expo Go e crie uma conta com o código que chega em
+   `http://127.0.0.1:58324`. Registre separadamente se o app abriu e se o login conectado
+   funcionou; são resultados diferentes.
 4. Rode os gates locais existentes: `pnpm turbo run lint typecheck test`,
    `pnpm --filter web build` e `pnpm architecture:check`. Para o gate integral e seu recibo,
    siga [Executar a bateria local ou numa KVM](local-quality-gate.md).

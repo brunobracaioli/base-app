@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseServerEnv, validateRuntimeEnvironment } from './index';
+import { parseServerEnv, requireDatabaseEnvironment, validateRuntimeEnvironment } from './index';
 
 const baseEnvironment = { APP_HOST: 'localhost:3000' };
 
@@ -157,5 +157,49 @@ describe('server environment validation', () => {
         DATABASE_CA_CERT: 'test-only-certificate',
       }),
     ).toThrow(/SUPABASE_URL is required/);
+  });
+
+  it('allows the local stack (loopback DB without CA, loopback Redis over HTTP) only in development/test', () => {
+    const localStack = {
+      ...baseEnvironment,
+      DATABASE_URL: 'postgresql://api_runtime:generated-test-only@127.0.0.1:58322/postgres',
+      UPSTASH_REDIS_REST_URL: 'http://127.0.0.1:58379',
+      UPSTASH_REDIS_REST_TOKEN: 'generated-test-only-token',
+    };
+    for (const NODE_ENV of ['development', 'test'] as const) {
+      const parsed = parseServerEnv({ ...localStack, NODE_ENV });
+      expect(requireDatabaseEnvironment(parsed)).toEqual({
+        DATABASE_URL: localStack.DATABASE_URL,
+        DATABASE_CA_CERT: null,
+      });
+      expect(parsed.UPSTASH_REDIS_REST_URL).toBe('http://127.0.0.1:58379');
+    }
+    expect(() => parseServerEnv({ ...localStack, NODE_ENV: 'production' })).toThrow();
+    expect(() => parseServerEnv(localStack)).toThrow();
+    for (const VERCEL_ENV of ['preview', 'production'] as const) {
+      expect(() =>
+        parseServerEnv({ ...localStack, NODE_ENV: 'development', VERCEL_ENV }),
+      ).toThrow();
+    }
+    expect(() =>
+      parseServerEnv({
+        ...localStack,
+        NODE_ENV: 'development',
+        DATABASE_URL: 'postgresql://api_runtime:generated-test-only@db.example:5432/postgres',
+      }),
+    ).toThrow(/loopback database/);
+    expect(() =>
+      parseServerEnv({
+        ...localStack,
+        NODE_ENV: 'development',
+        UPSTASH_REDIS_REST_URL: 'http://192.168.0.10:58379',
+      }),
+    ).toThrow();
+    expect(() =>
+      requireDatabaseEnvironment({
+        APP_HOST: 'localhost:3000',
+        DATABASE_URL: 'postgresql://api_runtime:generated-test-only@127.0.0.1:58322/postgres',
+      }),
+    ).toThrow(/not configured/);
   });
 });

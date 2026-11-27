@@ -106,6 +106,22 @@ describe('database runtime configuration', () => {
     },
   );
 
+  it('builds a plaintext pool only for a loopback database without CA (local stack)', () => {
+    const config = createDatabasePoolConfig({
+      DATABASE_URL: 'postgresql://api_runtime:generated-test-only@127.0.0.1:58322/postgres',
+      DATABASE_CA_CERT: null,
+    });
+    expect(config.ssl).toBe(false);
+    for (const DATABASE_URL of [
+      'postgresql://api_runtime:generated-test-only@db.example:5432/postgres',
+      'postgresql://api_runtime:generated-test-only@192.168.0.10:58322/postgres',
+    ]) {
+      expect(() => createDatabasePoolConfig({ DATABASE_URL, DATABASE_CA_CERT: null })).toThrow(
+        'Invalid database connection configuration.',
+      );
+    }
+  });
+
   it('rejects malformed connection URLs and empty CA data without exposing configuration', () => {
     expect(() =>
       createDatabasePoolConfig({ ...TEST_ENVIRONMENT, DATABASE_URL: 'not-a-database-url' }),

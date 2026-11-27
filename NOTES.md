@@ -16,6 +16,19 @@
   fluxo Maestro não chegou ao login. A última tentativa terminou com timeout no
   Expo DevLauncher, sem a URL do projeto Metro. Nenhum fluxo nativo foi aprovado.
   O APK de laboratório não é uma entrega configurada para os alunos.
+- **Ambiente do aluno (2026-11-27):** `pnpm dev` sobe Supabase local com Mailpit, Redis,
+  API e Metro para o **Expo Go**, sem contas de backend (iPhone exige conta Expo grátis no Expo
+  Go e no CLI) e com um backend por aluno
+  ([spec](docs/specs/local-dev-stack.md), [tutorial](docs/tutorials/primeira-hora.md)).
+  Validado nesta máquina (WSL 2 + Docker Desktop) pelo portão no IP do Wi-Fi:
+  - OTP com o código lido no Mailpit;
+  - JWT ES256;
+  - `/api/v1/me` 200;
+  - rotas administrativas 404;
+  - bundles Android e iOS servidos pelo Metro.
+
+  **Pendente:** abrir no Expo Go de um aparelho físico. O Supabase CLI fica em 2.122.1 porque
+  o 3.4.0 não publicou a porta do banco no Docker Desktop.
 - **Próxima tarefa padrão:** entender o produto do aluno, registrar suas decisões
   em `AGENTS.bootstrap.md` e escrever a spec da funcionalidade solicitada.
   Só retomar o roadmap do núcleo mediante pedido explícito de manutenção da base.

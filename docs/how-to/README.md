@@ -5,6 +5,7 @@ Receitas para tarefas específicas. Cada uma assume que você já passou pelos
 
 | How-to | Quando usar | Relacionado |
 |--------|-------------|-------------|
+| [Ambiente local com `pnpm dev`](local-dev-stack.md) | Subir Supabase local, Mailpit, Redis, API e Expo Go na sua máquina, sem contas externas | [primeira hora](../tutorials/primeira-hora.md), [local-dev-stack](../specs/local-dev-stack.md) |
 | Publicar nas lojas | Enviar a primeira versão (e as seguintes) à App Store e ao Google Play | [ADR 0012](../adr/0012-ci-cd-and-release.md) |
 | Criar a conta de teste para o revisor | Preencher as notas de revisão da Apple e do Google com uma conta que entra sem ler e-mail | [identity-and-auth](../specs/identity-and-auth.md) |
 | Preencher Data Safety e privacy manifest | Declarar os dados coletados de forma coerente com os SDKs do app | [ADR 0002](../adr/0002-mobile-expo-react-native.md) |

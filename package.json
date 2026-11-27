@@ -6,6 +6,10 @@
     "node": ">=24.22.3 <25"
   },
   "scripts": {
+    "dev": "tsx packages/tooling/src/dev/local-dev-cli.ts up",
+    "dev:stop": "tsx packages/tooling/src/dev/local-dev-cli.ts stop",
+    "dev:db:reset": "tsx packages/tooling/src/dev/local-dev-cli.ts db-reset",
+    "expo:login": "pnpm --filter mobile exec expo login",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
@@ -36,6 +40,7 @@
     "eslint-config-prettier": "10.1.8",
     "globals": "17.14.0",
     "prettier": "3.10.1",
+    "supabase": "2.122.1",
     "tsx": "4.23.15",
     "turbo": "2.11.13",
     "typescript": "6.0.3",

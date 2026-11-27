@@ -148,10 +148,15 @@ Textos do app via i18n.
 ## Comandos
 
 Comandos existentes; os de banco exigem ambiente local descartável configurado.
-`mobile start` inicia Metro para development client, não instala um app nem usa Expo Go:
+`pnpm dev` sobe o ambiente local completo do aluno (Supabase local com Mailpit, Redis, API e
+Metro para o Expo Go; ver `docs/how-to/local-dev-stack.md`). `mobile start` abre no Expo Go;
+`mobile start:dev-client` inicia o Metro para development client:
 
 ```bash
 pnpm install
+pnpm dev                        # ambiente local completo + QR do Expo Go
+pnpm dev:stop                   # desliga Supabase e Redis locais
+pnpm dev:db:reset               # recria o banco local com todas as migrations
 pnpm turbo run lint typecheck test
 pnpm contracts:openapi          # gera docs/reference/openapi.yaml
 supabase start && supabase db reset && supabase test db

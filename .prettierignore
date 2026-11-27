@@ -11,3 +11,5 @@ apps/web/src/platform/db/types.ts
 coverage/
 dist/
 pnpm-lock.yaml
+.local-dev
+apps/mobile/expo-env.d.ts

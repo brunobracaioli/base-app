@@ -1,4 +1,4 @@
-import { resolveBootRoute, runExtensionBootGates } from './resolve-boot';
+import { resolveBootRoute, resolveRouteGroupAccess, runExtensionBootGates } from './resolve-boot';
 import type { BootContext, BootGate } from '../../../extensions/types';
 
 const context: BootContext = {
@@ -63,6 +63,60 @@ describe('boot resolution', () => {
         extensionBlock: null,
       }),
     ).toBe('/(app)/(tabs)');
+  });
+
+  it('opens exactly the route groups allowed by the boot route', () => {
+    const base = {
+      updateRequired: false,
+      maintenance: false,
+      session: null,
+      termsAccepted: false,
+      extensionBlock: null,
+    };
+
+    expect(resolveRouteGroupAccess(base)).toEqual({
+      gates: false,
+      auth: true,
+      app: false,
+      ext: false,
+    });
+    expect(resolveRouteGroupAccess({ ...base, maintenance: true })).toEqual({
+      gates: true,
+      auth: false,
+      app: false,
+      ext: false,
+    });
+    expect(resolveRouteGroupAccess({ ...base, session: context.session })).toEqual({
+      gates: true,
+      auth: false,
+      app: false,
+      ext: false,
+    });
+    expect(
+      resolveRouteGroupAccess({ ...base, session: context.session, termsAccepted: true }),
+    ).toEqual({ gates: false, auth: false, app: true, ext: true });
+    expect(resolveRouteGroupAccess({ ...base, session: context.session, offline: true })).toEqual({
+      gates: false,
+      auth: false,
+      app: true,
+      ext: true,
+    });
+    expect(
+      resolveRouteGroupAccess({
+        ...base,
+        session: context.session,
+        termsAccepted: true,
+        extensionBlock: { href: '/(ext)/blocked' },
+      }),
+    ).toEqual({ gates: false, auth: false, app: false, ext: true });
+    expect(
+      resolveRouteGroupAccess({
+        ...base,
+        session: context.session,
+        termsAccepted: true,
+        extensionBlock: { href: '/(gates)/extension-error' },
+      }),
+    ).toEqual({ gates: true, auth: false, app: false, ext: false });
   });
 
   it('runs extension gates sequentially and turns failures into a blocking gate', async () => {

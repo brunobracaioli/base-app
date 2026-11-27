@@ -41,6 +41,44 @@ permissão de ATT (App Tracking Transparency) e não registra token de push.
   e `pnpm-lock.yaml`; upgrades seguem o guia da versão do SDK, não o `latest` isolado de cada
   pacote nativo.
 
+Em 2026-11-27 as dependências foram alinhadas ao `expo install --check` do SDK 58: `expo` 58.1.0,
+`expo-router` 58.0.33, `expo-updates` 58.0.23, `expo-dev-client` 58.0.22, `expo-crypto` 58.0.9,
+`@sentry/react-native` 8.28.1 e `jest-expo` 58.0.16, ainda com pins exatos.
+
+## Emenda de 2026-11-27 — Expo Go no desenvolvimento
+
+**Contexto.** O base-app é o ponto de partida de alunos que precisam ver o app no próprio
+celular na primeira hora, inclusive em iPhone e sem Android Studio ou Xcode. O núcleo atual
+não usa módulo nativo fora do Expo Go: `expo-secure-store`, `expo-crypto`,
+`expo-screen-capture`, `expo-localization`, `expo-router`, NetInfo, AsyncStorage, Gesture
+Handler, Screens e Safe Area estão no Expo Go do SDK 58 (`expo install --check` limpo). O
+RevenueCat real ainda não foi implementado. O backend de desenvolvimento do aluno roda na
+própria máquina (Supabase local e API Next.js) e é alcançado pelo IP da rede local, por HTTP.
+
+**Decisão.**
+
+- `pnpm --filter mobile start` abre o projeto no Expo Go (`expo start --go`).
+  `start:dev-client` mantém o fluxo com development client.
+- Num bundle com `__DEV__`, `EXPO_PUBLIC_API_URL` e `EXPO_PUBLIC_SUPABASE_URL` aceitam `http:`
+  **somente** para host loopback ou IPv4 privado (RFC 1918), sem credenciais, query ou fragmento.
+  Num bundle de release, qualquer `http:` é recusado no boot, como antes. O DSN do Sentry é
+  sempre HTTPS. A regra de manifesto (SH-N11: `usesCleartextTraffic: false`, sem exceção de
+  ATS) não muda para builds próprios.
+- No Expo Go, o Sentry não é inicializado (não há módulo nativo) e o app informa à API a
+  `version` do `app.config.ts`, porque `nativeApplicationVersion` é a versão do próprio Expo Go.
+
+**Consequências.**
+
+- O aluno instala só o Expo Go da loja. Builds nativos ficam para quando o produto precisar.
+- O tráfego entre o celular e a máquina do aluno, na rede local, é texto claro no
+  desenvolvimento. Deve rodar numa rede confiável (a de casa), nunca em Wi-Fi público. A
+  sessão de teste fica no sandbox do Expo Go e não é a de produção.
+- Quando o produto acrescentar um módulo nativo fora do Expo Go (ex.: compras reais do
+  RevenueCat, login social nativo), o desenvolvimento desse fluxo volta ao dev client; a
+  validação de URL continua a mesma.
+- O Expo Go da loja só roda o SDK atual. Ao fixar um SDK novo, conferir `expo install --check`
+  e se o Expo Go publicado já suporta a versão.
+
 ## Alternativas consideradas
 
 | Alternativa | Por que não |
@@ -53,7 +91,9 @@ permissão de ATT (App Tracking Transparency) e não registra token de push.
 
 - SDK nativo novo entra por config plugin. Se não existir, escreve-se um em
   `apps/mobile/plugins/`, com teste do `app.config` gerado.
-- O Expo Go não serve, porque há módulos nativos; o desenvolvimento usa o dev client.
+- Desenvolvimento e aulas usam o **Expo Go** enquanto o núcleo só tiver módulos presentes no Expo
+  Go do SDK fixado (emenda de 2026-11-27, abaixo). O dev client continua necessário para release,
+  OTA assinada e qualquer módulo nativo que o produto acrescentar.
 - Os builds dependem do EAS (pago acima da cota gratuita). Build local continua possível com
   `eas build --local` ou `expo prebuild`.
 - A configuração base não contém ID de projeto EAS nem certificado de OTA. Updates permanecem

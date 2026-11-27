@@ -28,6 +28,31 @@ export function resolveBootRoute(input: BootRouteInput): string {
   return '/(app)/(tabs)';
 }
 
+export type RouteGroupAccess = {
+  readonly gates: boolean;
+  readonly auth: boolean;
+  readonly app: boolean;
+  readonly ext: boolean;
+};
+
+const PRODUCT_HOME_ROUTE = '/(app)/(tabs)';
+
+/**
+ * Root-level guards for the Expo Router groups, derived from the boot route so a protected
+ * group is never reachable (including by deep link) while a gate, the sign-in flow or a
+ * blocking extension still applies.
+ */
+export function resolveRouteGroupAccess(input: BootRouteInput): RouteGroupAccess {
+  const target = resolveBootRoute(input);
+  const productAllowed = target === PRODUCT_HOME_ROUTE;
+  return {
+    gates: target.startsWith('/(gates)/'),
+    auth: target.startsWith('/(auth)/'),
+    app: productAllowed,
+    ext: productAllowed || target.startsWith('/(ext)/'),
+  };
+}
+
 export type ExtensionGateRun =
   | { readonly status: 'pass' }
   | { readonly status: 'block'; readonly href: string; readonly gateName: string };

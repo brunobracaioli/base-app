@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/react-native';
-import { Stack, type ErrorBoundaryProps } from 'expo-router';
+import { type ErrorBoundaryProps } from 'expo-router';
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -10,9 +10,10 @@ import {
   AppProviders,
   AuthRuntimeBootstrap,
 } from '../features/shell/ui/app-providers';
+import { RootNavigator } from '../features/shell/ui/root-navigator';
 import { initializeSentry } from '../shared/telemetry/sentry';
 
-initializeSentry(process.env.EXPO_PUBLIC_SENTRY_DSN);
+const sentryEnabled = initializeSentry(process.env.EXPO_PUBLIC_SENTRY_DSN);
 
 function RootLayout() {
   return (
@@ -20,12 +21,7 @@ function RootLayout() {
       <AppConfigProvider>
         <AppConfigBootBridge>
           <AuthRuntimeBootstrap>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(gates)" />
-              <Stack.Screen name="(auth)" />
-              <Stack.Screen name="(app)" />
-              <Stack.Screen name="(ext)" />
-            </Stack>
+            <RootNavigator />
           </AuthRuntimeBootstrap>
         </AppConfigBootBridge>
       </AppConfigProvider>
@@ -50,4 +46,4 @@ export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
   );
 }
 
-export default Sentry.wrap(RootLayout);
+export default sentryEnabled ? Sentry.wrap(RootLayout) : RootLayout;

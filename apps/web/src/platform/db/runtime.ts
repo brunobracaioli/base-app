@@ -72,20 +72,33 @@ function validateDatabaseEnvironment(environment: DatabaseEnvironment): void {
     url.hostname.length === 0 ||
     url.pathname.length <= 1 ||
     hasTlsOverride ||
-    environment.DATABASE_CA_CERT.trim().length === 0
+    (environment.DATABASE_CA_CERT === null
+      ? !isLoopbackDatabaseHost(url.hostname)
+      : environment.DATABASE_CA_CERT.trim().length === 0)
   ) {
     throw new Error('Invalid database connection configuration.');
   }
+}
+
+/** Defense in depth: a connection without TLS is only ever built for the local loopback stack. */
+function isLoopbackDatabaseHost(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return (
+    normalized === 'localhost' || normalized === '::1' || /^127(?:\.\d{1,3}){3}$/.test(normalized)
+  );
 }
 
 export function createDatabasePoolConfig(environment: DatabaseEnvironment): PoolConfig {
   validateDatabaseEnvironment(environment);
   return {
     connectionString: environment.DATABASE_URL,
-    ssl: {
-      ca: environment.DATABASE_CA_CERT,
-      rejectUnauthorized: true,
-    },
+    ssl:
+      environment.DATABASE_CA_CERT === null
+        ? false
+        : {
+            ca: environment.DATABASE_CA_CERT,
+            rejectUnauthorized: true,
+          },
     max: DATABASE_POOL_SIZE,
     connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
     query_timeout: QUERY_TIMEOUT_MS,
