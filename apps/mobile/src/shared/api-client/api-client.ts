@@ -15,6 +15,11 @@ export interface ApiSessionPort {
   getAccessToken(): Promise<string | null>;
   refreshSession(): Promise<string | null>;
   signOutLocal(): Promise<void>;
+  getAuthContext?(): Promise<{
+    readonly accessToken: string | null;
+    readonly userId: string | null;
+  }>;
+  signOutLocalIfUserMatches?(userId: string): Promise<boolean>;
 }
 
 export type ApiRequestTelemetry = {
@@ -65,7 +70,7 @@ export type ApiClientOptions = {
     readonly path: string;
   }) => void;
   readonly onAppGate?: (gate: ApiAppGate) => void;
-  readonly onAccountDeleted?: () => Promise<void>;
+  readonly onAccountDeleted?: (userId: string | null) => Promise<void>;
 };
 
 export type ApiRequestOptions = {
@@ -87,6 +92,8 @@ type ReceivedResponse = {
   readonly cleanup: () => void;
   readonly aborted: () => boolean;
   readonly attemptsUsed: number;
+  readonly accessTokenUsed: string | null;
+  readonly sessionIdentity: string | null;
 };
 
 const apiTimeoutMs = 10_000;
@@ -229,6 +236,34 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     return refreshPromise;
   }
 
+  async function isRequestSessionCurrent(result: ReceivedResponse): Promise<boolean> {
+    try {
+      if (result.sessionIdentity !== null && options.session.getAuthContext !== undefined) {
+        const current = await options.session.getAuthContext();
+        return current.userId === result.sessionIdentity;
+      }
+      if (result.accessTokenUsed !== null) {
+        return (await options.session.getAccessToken()) === result.accessTokenUsed;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  async function clearRequestSession(result: ReceivedResponse): Promise<boolean> {
+    if (result.accessTokenUsed === null) return false;
+    if (
+      result.sessionIdentity !== null &&
+      options.session.signOutLocalIfUserMatches !== undefined
+    ) {
+      return options.session.signOutLocalIfUserMatches(result.sessionIdentity);
+    }
+    if (!(await isRequestSessionCurrent(result))) return false;
+    await options.session.signOutLocal();
+    return true;
+  }
+
   async function fetchOnce<T>(
     endpoint: ApiEndpoint<T>,
     requestOptions: ApiRequestOptions,
@@ -267,6 +302,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       controller.abort();
       cleanup();
     };
+    let accessTokenUsed: string | null = null;
+    let sessionIdentity: string | null = null;
     const timeout = setTimeout(() => {
       controller.abort();
       requestSignal?.removeEventListener('abort', abortRequest);
@@ -291,10 +328,23 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       }
 
       if (endpoint.security.length > 0) {
+        const authContext =
+          options.session.getAuthContext === undefined
+            ? null
+            : await options.session.getAuthContext();
         const accessToken =
           accessTokenOverride === undefined
-            ? await options.session.getAccessToken()
+            ? (authContext?.accessToken ?? (await options.session.getAccessToken()))
             : accessTokenOverride;
+        if (
+          accessTokenOverride !== undefined &&
+          authContext !== null &&
+          authContext.accessToken !== accessTokenOverride
+        ) {
+          throw new FetchAttemptError(requestId);
+        }
+        accessTokenUsed = accessToken;
+        sessionIdentity = authContext?.userId ?? null;
         if (controller.signal.aborted) throw new FetchAttemptError(requestId);
         if (accessToken !== null) {
           headers.set('Authorization', `Bearer ${accessToken}`);
@@ -320,6 +370,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         cleanup,
         aborted: () => controller.signal.aborted,
         attemptsUsed: 1,
+        accessTokenUsed,
+        sessionIdentity,
       };
     } catch (error) {
       cleanup();
@@ -532,8 +584,12 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       throw firstProblem;
     }
     if (firstProblem.code === 'auth.account_deleted') {
-      await options.session.signOutLocal();
-      await options.onAccountDeleted?.();
+      const sessionCleared = await clearRequestSession(firstResult);
+      if (sessionCleared) await options.onAccountDeleted?.(firstResult.sessionIdentity);
+      throw firstProblem;
+    }
+
+    if (!(await isRequestSessionCurrent(firstResult))) {
       throw firstProblem;
     }
 
@@ -544,7 +600,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       refreshedToken = null;
     }
     if (refreshedToken === null) {
-      await options.session.signOutLocal();
+      await clearRequestSession(firstResult);
       throw firstProblem;
     }
 
@@ -565,7 +621,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     if (firstResult.response.status === 401) {
       try {
         const secondProblem = await parseProblem(firstResult);
-        await options.session.signOutLocal();
+        await clearRequestSession(firstResult);
         throw secondProblem;
       } finally {
         firstResult.cleanup();

@@ -10,7 +10,7 @@ export default function AppLayout() {
     !boot.updateRequired &&
     !boot.maintenance &&
     session !== null &&
-    boot.termsAccepted &&
+    (boot.termsAccepted || boot.offline) &&
     boot.extensionBlock === null;
 
   return (

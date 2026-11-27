@@ -2,23 +2,39 @@
 
 ## Status atual
 
-- **Fase:** onda 5 ✅ concluída como código do template, branch `feat/w5-config-gates`
-  (`/tmp/app-base-w5`). O dono aprovou todas as pendências e a execução contínua
-  das ondas restantes; decisões em ADR 0017.
+- **Fase:** onda 6 em implementação na branch `feat/w6-email-auth`, worktree
+  persistente `.worktrees/w6`. Onda 5 integrada localmente à `main` em `6387bc3`.
+  O dono autorizou a execução contínua das ondas restantes, com integração e
+  verificação por onda; decisões anteriores preservadas no ADR 0017.
 - **Entregue:** configuração pública/cache/gates; polling mobile foreground de 60 s;
   SQL restrito, CAS/force/auditoria; CLI com duas assinaturas e rollback validado.
 - **Gates:** código `8777573` aprovado em 18/18 gates, checkout limpo, 533 testes
   e um teste condicionado separado. pgTAP 288/13; 38 checks CLI reais e 24 do
   harness API/banco. Build web, exports Android/iOS e drifts aprovados.
   [Matriz de aceite](docs/plan/wave-5-verification.md).
-- **Próximo passo:** integrar W5 localmente e executar onda 6: spikes de Auth e
-  Mailpit antes de modelo/adaptadores/UI. Continuar as ondas até completar o
-  código do template; contas, publicação e dispositivos não serão simulados.
+- **Próximo passo:** fechar as correções da revisão final de Auth, executar os
+  gates integrados e consolidar W6 em commit local; depois, onda 7. O dono
+  reiterou em 2026-11-27 a autorização para finalizar todas as ondas do template.
+- **W6:** planos B dos spikes selecionados: cadastro por OTP antes da senha e
+  OTP 10/300/10; migration e Auth/Mailpit verificados. Após as correções,
+  189 testes mobile e 435 dos demais pacotes passaram; um teste condicionado
+  permanece separado. Lint, tipos, arquitetura e formato aprovados; build web
+  e tipos Kysely sem drift aprovados. pgTAP passou 294/14 após corrigir o isolamento de três
+  testes que dependiam da ausência de histórico do cron; histórico preservado.
+  Restauração offline de token expirado, reconexão/consentimentos, exposição
+  do SDK na fachada e CTA de cadastro com método desligado foram corrigidos
+  com regressões. Revisão final e gates do commit integrado pendentes.
+  Emulador concluiu boot; Maestro e harness HTTPS preparados, fluxos nativos
+  ainda sem resultado. [Verificação em andamento](docs/plan/wave-6-verification.md).
+  W6 permanece ⬜ até concluir a verificação.
 - **Recursos:** credenciais/planos/login do operador removidos. Stack descartável
   Auth/Postgres/Mailpit da KVM permanece sob controle do gerente para W6;
   será limpa ao fim da execução contínua. Outros workloads preservados.
 - **Operação:** sem push, PR, GitHub Actions, deploy ou banco hospedado alterado.
   Evidências em `.artifacts/w5-completion/` no checkout principal.
+  Handoffs e provas parciais W6 em `.artifacts/recovery/w6/` no mesmo checkout.
+  Um reinício apagou `/tmp`; ferramentas e worktrees foram recuperadas em
+  diretórios persistentes. Não reutilizar os caminhos temporários antigos.
 
 ## Roadmap
 

@@ -1066,7 +1066,7 @@ dos invariantes.
 | Contas novas por IP | 30 por 5 min (`sign_in_sign_ups`) | `config.base.toml` |
 | Contas novas no projeto | 300 por hora | hook `before_user_created` (identity §3.7) |
 | E-mails de login no projeto | `email_sent` = 60 por hora (mín. 30, máx. 300) | `config.base.toml` |
-| Verificações de OTP por IP | 30 por 5 min (reduzido a 10 no plano B de S-AU-4) | `config.base.toml` |
+| Verificações de OTP por IP | 10 por 5 min (plano B selecionado em S-AU-4) | `config.base.toml` |
 | Orçamento global do RevenueCat | 240 chamadas/min (60% do limite medido em S-BI-1; padrão suposto 400), leituras de cache miss limitadas a 180/min, 60/min reservadas a `refresh` e exclusão | `billing.md` §3.2 |
 | Disjuntor global do RevenueCat | abre por `min(Retry-After, 60)` s em 429 ou orçamento esgotado | `billing.md` §3.2 |
 | Pool de conexões da API | `max` 3 por instância; `connectionTimeoutMillis` 3 s | `platform/db` |
@@ -1210,7 +1210,7 @@ Regras: testes determinísticos (relógio e gerador de ID injetados), sem rede e
       prefixo dela; `%2f` e `%5c` são rejeitados pelo Proxy.
 - [ ] `publicEnv`: chave sem o prefixo (`EXPO_PUBLIC_` ou `NEXT_PUBLIC_`) ou com `SECRET`,
       `KEY_PRIVATE` ou `TOKEN` falha; site key de CAPTCHA passa; chave repetida falha.
-- [ ] Não existe papel/grant customizado em `auth`; os três helpers Auth W2 têm owner/caller/
+- [ ] Não existe papel/grant customizado em `auth`; os helpers Auth do registro fechado têm owner/caller/
       migration exatos no registry fechado, e qualquer função de extensão que toque `auth` falha;
       papel auxiliar sem o prefixo
       `<ext_schema>_` falha.

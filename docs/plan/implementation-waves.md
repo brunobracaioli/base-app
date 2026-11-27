@@ -261,7 +261,7 @@ merge de uma por vez.
     otimista, `AC409`), `check` de forma e limite de 20 alterações por hora (app-config §4);
     `app_config.operator_alert_exempt_keys` (vazia) e o sinal de `ops.check_signals()` para
     operador em chave fora dela.
-  - `config.base.toml` completo (identity-and-auth §3.7): OTP de 8 dígitos e 600 s, limites por IP,
+  - `config.base.toml` completo (identity-and-auth §3.7): OTP de 10 dígitos e 300 s, limites por IP,
     `email_sent` de 60/h, superfícies não usadas desligadas, tetos de sessão, `[db.pooler]`; e o
     `pnpm supabase:config:check` em verde.
   - `platform/db`: `userScopedDb`, `systemDb(<contexto>)`, pool com TLS verificado.

@@ -500,11 +500,12 @@ select set_eq(
   $$
     values
       ('identity.before_user_created(jsonb):postgres:supabase_auth_admin:20261125175958_w2_supabase_compatibility_baseline.sql'::text),
+      ('identity.clear_unverified_password():postgres:supabase_auth_admin:20261127015300_w6_email_auth_safety.sql'::text),
       ('identity.count_unconfirmed_users():postgres:ops:20261125175958_w2_supabase_compatibility_baseline.sql'::text),
       ('identity.delete_unconfirmed_users():postgres:ops:20261125175958_w2_supabase_compatibility_baseline.sql'::text),
       ('identity.read_fresh_roles(uuid):postgres:authenticated:20261125210517_w4_identity_profile_consents_fresh_roles.sql'::text)
   $$,
-  'the core Auth registry is closed to exactly four approved functions and callers'
+  'the core Auth registry is closed to exactly five approved functions and callers'
 );
 
 select set_eq(
@@ -535,11 +536,12 @@ select set_eq(
   $$,
   $$
     values ('before_user_created:jsonb'::text),
+           ('clear_unverified_password:trigger'::text),
            ('count_unconfirmed_users:bigint'::text),
            ('delete_unconfirmed_users:integer'::text),
            ('read_fresh_roles:TABLE(roles jsonb)'::text)
   $$,
-  'the four Auth helpers keep their exact return types'
+  'the five Auth helpers keep their exact return types'
 );
 
 select ok(
@@ -579,6 +581,7 @@ select set_eq(
   $$
     values
       ('identity.before_user_created(jsonb)'::text, 'supabase_auth_admin'::text, 'EXECUTE'::text, false),
+      ('identity.clear_unverified_password()'::text, 'supabase_auth_admin'::text, 'EXECUTE'::text, false),
       ('identity.count_unconfirmed_users()'::text, 'ops'::text, 'EXECUTE'::text, false),
       ('identity.delete_unconfirmed_users()'::text, 'ops'::text, 'EXECUTE'::text, false),
       ('identity.read_fresh_roles(uuid)'::text, 'authenticated'::text, 'EXECUTE'::text, false)
@@ -608,7 +611,13 @@ select ok(
   and not has_function_privilege('api_runtime', 'identity.read_fresh_roles(uuid)', 'EXECUTE')
   and not has_function_privilege('service_role', 'identity.read_fresh_roles(uuid)', 'EXECUTE')
   and not has_function_privilege('ops', 'identity.read_fresh_roles(uuid)', 'EXECUTE')
-  and not has_function_privilege('supabase_auth_admin', 'identity.read_fresh_roles(uuid)', 'EXECUTE'),
+  and not has_function_privilege('supabase_auth_admin', 'identity.read_fresh_roles(uuid)', 'EXECUTE')
+  and has_function_privilege('supabase_auth_admin', 'identity.clear_unverified_password()', 'EXECUTE')
+  and not has_function_privilege('anon', 'identity.clear_unverified_password()', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'identity.clear_unverified_password()', 'EXECUTE')
+  and not has_function_privilege('api_runtime', 'identity.clear_unverified_password()', 'EXECUTE')
+  and not has_function_privilege('service_role', 'identity.clear_unverified_password()', 'EXECUTE')
+  and not has_function_privilege('ops', 'identity.clear_unverified_password()', 'EXECUTE'),
   'each Auth helper is executable only by its designated non-owner caller'
 );
 

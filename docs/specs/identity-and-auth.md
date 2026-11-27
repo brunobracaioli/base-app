@@ -30,11 +30,11 @@ Fora do escopo: login social, modo visitante, MFA para o usuário final (Q-AU-2)
 | ID | Requisito |
 |----|-----------|
 | ID-01 | Os métodos ativos vêm de `product.config.ts` (`auth.methods`, subconjunto de `email_otp` e `email_password`). Método desligado não aparece no app (ver Q-AU-1 sobre o `config.toml`) |
-| ID-02 | **Código por e-mail:** o usuário informa o e-mail, recebe um código de 8 dígitos válido por 600 s e entra. Fluxo único para cadastro e login (`shouldCreateUser: true`) |
+| ID-02 | **Código por e-mail:** o usuário informa o e-mail, recebe um código de 10 dígitos válido por 300 s e entra. Fluxo único para cadastro e login (`shouldCreateUser: true`) |
 | ID-03 | **E-mail + senha:** cadastro com confirmação do e-mail por código; o primeiro login com senha só é possível depois da confirmação. A senha **nunca** vale antes de o dono do e-mail provar a posse dele (pré-sequestro: plano A ou B de §3.2 e §8) |
 | ID-04 | **Política de senha:** mínimo 10 caracteres, máximo 72 bytes (limite do bcrypt), com letras e dígitos. Proteção contra senhas vazadas ligada quando o plano do Supabase permitir. O app valida antes de enviar; o Auth é a barreira real |
 | ID-05 | **Redefinição de senha por código:** `resetPasswordForEmail` → código no e-mail → `verifyOtp({ type: 'recovery' })` → `updateUser({ password })`. Sem link e sem deep link: o template usa `{{ .Token }}` |
-| ID-06 | **Troca de senha:** o usuário já logado chama `reauthenticate()`, recebe um código por e-mail e envia `updateUser({ password, nonce })`. `secure_password_change = true` impede troca sem o código |
+| ID-06 | **Troca de senha:** o app sempre exige `reauthenticate()`, envia o código recebido como `nonce` em `updateUser({ password, nonce })` e exige login recente. GoTrue 2.198 aceita mudança sem `nonce` numa sessão recente, então essa barreira é do app; uma chamada direta ao Auth ainda pode contorná-la (R-ID-4) |
 | ID-07 | **Troca de e-mail:** exige login recente (ID-09) e confirmação nos dois endereços (`double_confirm_changes = true`) |
 | ID-08 | A sessão persiste entre aberturas do app, cifrada no aparelho (ID-N1), e é renovada enquanto o app está em primeiro plano |
 | ID-09 | **Login recente:** ações sensíveis da nossa API (`requireRecentAuth`) exigem que o maior `timestamp` de `amr` no JWT seja de até `recentAuthMaxAgeSec` (padrão 300 s). Para provar, o app refaz o login no mesmo método num cliente separado (§3.4) |
@@ -42,10 +42,11 @@ Fora do escopo: login social, modo visitante, MFA para o usuário final (Q-AU-2)
 | ID-11 | Perfil: nome de exibição (opcional, 1 a 80 caracteres) e idioma (um dos `locales`). Trocar o idioma atualiza também `user_metadata.locale`, que escolhe o idioma dos e-mails |
 | ID-12 | E-mails de login em pt-BR, en e es, a partir de `supabase/templates/`, escolhendo o ramo por `{{ .Data.locale }}` (spike S-AU-1) |
 | ID-13 | `GET /v1/me` devolve o perfil e o estado dos termos (vindo do contexto `privacy`); cria o perfil na primeira chamada |
-| ID-14 | O adaptador do Supabase Auth no app aceita um `captchaToken` opcional, obtido do `CaptchaProvider` registrado por uma extensão. **Toda** chamada que aceita `captchaToken` (cadastro, `signInWithPassword`, `signInWithOtp`, `resetPasswordForEmail`, `resend`, `reauthenticate`, login social e anônimo) passa por `withCaptcha(provider, action, call)`, que é do núcleo (`apps/mobile/src/features/auth/api/with-captcha.ts`; contrato em base-app.md §3.4.2 e mobile-app-shell.md §3.8). No base-app o provedor é nulo, `withCaptcha` chama `call(undefined)` e nenhuma chamada leva o campo |
+| ID-14 | O adaptador do Supabase Auth no app usa `withCaptcha(provider, action, call)` para toda operação do SDK que aceita `captchaToken` (cadastro, `signInWithPassword`, `signInWithOtp`, `verifyOtp`, `resetPasswordForEmail`, `resend`, login social por token e anônimo). O helper é do núcleo (`apps/mobile/src/features/auth/api/with-captcha.ts`; contrato em base-app.md §3.4.2 e mobile-app-shell.md §3.8). No base-app o provedor é nulo, `withCaptcha` chama `call(undefined)` e nenhuma chamada leva o campo. Limite verificado no SDK fixado `@supabase/auth-js` 2.119.2: `reauthenticate()` não aceita opções nem `captchaToken`; envia `GET /reauthenticate`. W6 não inventa transporte para CAPTCHA nessa chamada; suporte a CAPTCHA para reautenticação de troca de senha continua pendente de contrato/spike específico |
 | ID-15 | O Auth envia os e-mails direto pelo SMTP do Resend, de um **subdomínio de envio dedicado** (ex.: `mail.<domínio>`), com SPF, DKIM e DMARC (§3.8). A API não participa do envio. O texto de todo e-mail com código traz "não compartilhe este código" |
 | ID-17 | Contas que nunca confirmaram o e-mail são removidas depois de 3 dias por `ops.purge_unconfirmed_users()` (`pg_cron`, ADR 0008) |
 | ID-18 | O hook `before_user_created` reserva atomicamente no máximo 300 aprovações em janela móvel de uma hora; cada repetição do hook e cada falha posterior do Auth consomem uma vaga até ela vencer; acima do teto responde 429 |
+| ID-19 | O Supabase Auth oferece avisos de segurança localizados após troca de senha e de e-mail; `password_changed` e `email_changed` ficam habilitadas na configuração do template. GoTrue envia o aviso de e-mail alterado ao endereço antigo; entrega local passou nos três idiomas |
 | ID-16 | `AuthContext` expõe `isAnonymous`, `appRoles` e `providers`, lidos do JWT e validados (§3.5). `platform/auth` exporta `verifyAccessToken(token)` para rotas de extensão que recebem um segundo token no corpo. O base-app nunca liga o login anônimo |
 
 ### 2.2 Não funcionais
@@ -109,7 +110,7 @@ sequenceDiagram
   participant Mail as Resend (SMTP)
   U->>App: e-mail
   App->>Auth: signInWithOtp({ email, shouldCreateUser: true, data: { locale }, captchaToken? })
-  Auth->>Mail: e-mail com {{ .Token }} (8 dígitos, 600 s)
+  Auth->>Mail: e-mail com {{ .Token }} (10 dígitos, 300 s)
   Auth-->>App: 200 (sempre, exista a conta ou não)
   App-->>U: "Se o e-mail estiver correto, você vai receber um código"
   U->>App: código
@@ -120,27 +121,25 @@ sequenceDiagram
 
 **E-mail + senha**
 
-- Cadastro, **plano A** (só se o spike S-AU-2 provar que o Auth invalida a senha de um
-  cadastro não confirmado quando o dono do e-mail confirma): `signUp({ email, password,
+- Cadastro, **plano A** (alternativa rejeitada por S-AU-2, pois a senha direta sobreviveu à
+  confirmação da vítima): `signUp({ email, password,
   options: { data: { locale } } })` → código de confirmação (`verifyOtp({ type: 'signup' })`)
   → sessão. Antes da confirmação, `signInWithPassword` falha com `email_not_confirmed`; o app
   leva à tela do código e oferece reenvio (`resend({ type: 'signup' })`).
-- Cadastro, **plano B** (**padrão até o spike S-AU-2 concluir**): o app nunca chama `signUp`
+- Cadastro, **plano B** (**selecionado após S-AU-2**): o app nunca chama `signUp`
   com senha. "Criar conta com senha" faz `signInWithOtp({ shouldCreateUser: true })` →
-  `verifyOtp({ type: 'email' })` → tela "Criar senha" → `updateUser({ password })` (com `nonce`
-  de `reauthenticate()` se o spike S-AU-3b mostrar que o Auth o exige). Como a API do Auth é
+  `verifyOtp({ type: 'email' })` → tela "Criar senha" → `updateUser({ password })`. Em outras
+  trocas de senha, o app sempre chama `reauthenticate()` e envia seu `nonce`, mesmo que GoTrue
+  aceite uma mudança sem `nonce` numa sessão recente (S-AU-3b). Como a API do Auth é
   pública, um atacante ainda pode chamar `signUp` com senha direto; por isso o plano B inclui
   a migration `identity.clear_unverified_password()`: um trigger em `auth.users`
   (`after update of email_confirmed_at ... when old.email_confirmed_at is null and
   new.email_confirmed_at is not null`) zera `encrypted_password` na primeira confirmação do
-  e-mail. Se a decisão de W6 mantiver o trigger, a função será `SECURITY DEFINER`, terá owner
-  `postgres`, `search_path = ''` e um `EXECUTE`/trigger path estritamente limitado; W6 incluirá
-  a assinatura e os chamadores no registry fechado, com revisão de ameaça e testes próprios.
-  Como o app nunca define senha antes da
-  confirmação, a regra "nenhuma senha vale antes da primeira confirmação" não atinge usuário
-  legítimo. Quem controla o trigger: o spike confirma se o `migrator` pode criá-lo em
-  `auth.users`; se não, a migration é aplicada uma vez por quem cria o projeto, e o pgTAP
-  confere a existência do trigger.
+  e-mail. A função é `SECURITY DEFINER`, pertence a `postgres`, usa `search_path = ''` e só
+  concede `EXECUTE` a `supabase_auth_admin`; a assinatura e o chamador entram no registry
+  fechado, com teste pgTAP e revisão de ameaça. O probe transacional em Postgres local confirmou
+  criação da função e do trigger; o pgTAP confere execução no caminho de confirmação. Como o app
+  não define senha antes da confirmação, a regra não apaga senha legítima do plano B.
 - Login: `signInWithPassword({ email, password })`.
 - Redefinição:
 
@@ -163,14 +162,22 @@ sequenceDiagram
 ```
 
 Depois de redefinir a senha, o app encerra as outras sessões (`scope: 'others'`), porque quem
-redefine costuma estar recuperando uma conta que pode estar comprometida.
+redefine costuma estar recuperando uma conta que pode estar comprometida. Antes de alterar a senha,
+o app persiste somente o UUID do titular em um marcador cifrado. Se a alteração ou a chamada de
+revogação falhar ou expirar, o app não instala a sessão de recuperação no cliente principal. Se o
+marcador não puder ser armazenado, o app não envia a alteração de senha. Na próxima sessão desse
+mesmo titular, tenta encerrar as outras sessões antes de expor a sessão ao app.
+O marcador só é removido depois de uma resposta bem-sucedida de `signOut({ scope: 'others' })`; se a
+atualização de senha falhar, o marcador pode continuar e uma próxima entrada também encerrará as
+outras sessões. O marcador nunca guarda e-mail, código, senha ou nonce e uma conta diferente não
+pode consumi-lo.
 
 **Trocas dentro da conta**
 
 | Operação | Chamadas | Proteção no servidor |
 |----------|----------|----------------------|
-| Trocar senha | `reauthenticate()` → código por e-mail → `updateUser({ password, nonce })` | `secure_password_change = true`: sem o `nonce` o Auth recusa |
-| Trocar e-mail | login recente (§3.4) → `updateUser({ email })` → um código para cada endereço → `verifyOtp({ type: 'email_change' })` (parâmetros exatos no spike S-AU-3a) → `refreshSession()` | `double_confirm_changes = true`: as duas caixas precisam confirmar |
+| Trocar senha | exigir login recente → `reauthenticate()` → código por e-mail → `updateUser({ password, nonce })` | `secure_password_change = true`; S-AU-3b observou que GoTrue também aceita sem `nonce` numa sessão recente. O app não omite o passo de código; chamada direta ao Auth continua como risco R-ID-4 |
+| Trocar e-mail | login recente (§3.4) → `updateUser({ email })` → um código para cada endereço → `verifyOtp({ type: 'email_change' })` nos dois endereços → `refreshSession()` | `double_confirm_changes = true`: o e-mail ativo só muda depois das duas confirmações |
 | Mudar idioma | `PATCH /v1/me` e, se der certo, `updateUser({ data: { locale } })` | — |
 
 A checagem de login recente da troca de e-mail é feita no app, porque a chamada vai direto ao
@@ -192,6 +199,13 @@ Auth. A barreira real é a confirmação nos dois endereços.
 - Falha de decifragem (versão desconhecida, tag inválida, chave ausente): o adaptador apaga a
   chave e o valor, e o app volta a Boas-vindas com a mensagem "sua sessão expirou". Nunca usa
   o dado adulterado.
+- Access token expirado e falha temporária de rede ao renovar: preservar a
+  sessão cifrada previamente validada e publicar apenas seu resumo para uso
+  offline. O leitor de token da API devolve ausência até a revalidação ter
+  sucesso. Credencial revogada/inválida e sessão cifrada inválida continuam
+  levando à limpeza local. Ao reconectar, revalidar a sessão antes de consultar
+  perfil e consentimentos, mesmo sem mudança de UUID; resultados de uma geração
+  anterior não podem restaurar uma conta que já saiu ou foi substituída.
 - `autoRefreshToken` só em primeiro plano: `startAutoRefresh()` e `stopAutoRefresh()` ligados
   ao `AppState`.
 - Android: `allowBackup="false"` e `dataExtractionRules` (requisito SH-N5 de
@@ -357,12 +371,14 @@ mão (ADR 0014).
 | `auth.email.double_confirm_changes` | true | ID-07 |
 | `auth.email.secure_password_change` | true | ID-06 |
 | `auth.email.max_frequency` | `60s` | intervalo mínimo entre e-mails para o mesmo endereço (S-AU-4 confirma a chave e o efeito) |
-| `auth.email.otp_length` / `otp_expiry` | 8 / 600 | ID-02; com 600 s e 30 verificações por 5 min por IP, 1% de chance de acerto exige cerca de 16 700 IPs por janela (10^8 códigos); plano B de S-AU-4: 10 / 300 |
+| `auth.email.otp_length` / `otp_expiry` | 10 / 300 | ID-02; selecionado após S-AU-4: o código correto continuou aceito após dez tentativas erradas, e o agrupamento IPv6 /64 não foi provado |
+| `auth.email.notification.password_changed` / `email_changed` | `enabled = true`; assuntos e corpos com ramos pt-BR/en/es | ID-19; GoTrue 2.198 e CLI 3.4 aceitam os templates de notificação |
 | `auth.email.smtp` | host em `env(SMTP_HOST)`, senha em `env(RESEND_SMTP_PASSWORD)` | ID-15; valores por ambiente, Resend nos ambientes hospedados e entrega local validada na onda 2 |
 | `auth.email.template.<tipo>` | `content_path` para `supabase/templates/<tipo>.html` | ID-12 |
+| `auth.email.notification.password_changed` / `email_changed` | habilitadas; `content_path` em `supabase/templates/` | avisos de segurança localizados após troca de senha e de e-mail (ID-19) |
 | `auth.rate_limit.email_sent` | 60 por hora (mínimo 30, máximo 300; = 1,5 × o pico horário esperado) | **teto global do projeto**, não por IP nem por destinatário (R-ID-3). Alerta em 70% (§3.8) |
 | `auth.rate_limit.sign_in_sign_ups` | 30 por 5 min por IP | força bruta |
-| `auth.rate_limit.token_verifications` | 30 por 5 min por IP (plano B de S-AU-4: 10) | força bruta de OTP; teto também invariante |
+| `auth.rate_limit.token_verifications` | 10 por 5 min por IP | plano B de S-AU-4; o guard exige o valor exato |
 | `auth.hook.before_user_created.enabled` / `.uri` | `true` / `pg-functions://postgres/identity/before_user_created` | reserva atômica de até 300 aprovações por hora (ID-18), sem exigir e-mail no evento; erro 429 ao exceder; `execute` só para `supabase_auth_admin` |
 | `auth.external.<provedor>.enabled` | false, para todos os provedores aceitos pela CLI, inclusive `slack_oidc` | superfície não usada; extensão liga em fragmento |
 | `auth.sms.enabled` | false | provedor SMS desligado; `auth.enable_signup` permanece true para o cadastro por e-mail |
@@ -393,8 +409,10 @@ O gerador e o check também falham se existir `supabase/config.json` ou
 | `auth.email.enable_signup`, `auth.sms.enable_signup` | proibidos: chaves depreciadas no CLI 3.4.0; usar `auth.email.enabled` e `auth.sms.enabled` |
 | `auth.additional_redirect_urls` | vazio, ou só `https://` explícito e sem curinga |
 | `auth.enable_anonymous_sign_ins`, `enable_manual_linking` | false no núcleo. Um fragmento pode ligar com `# allow-override` **somente com CAPTCHA ligado** no `config.toml` gerado (`auth.captcha.enabled = true`, `provider` e `secret = env(...)`); valor `true` com CAPTCHA desligado falha o check mesmo com o marcador. Isso amarra a ordem de implantação: o modo visitante só liga depois do CAPTCHA |
-| `auth.email.otp_length` / `otp_expiry` | ≥ 8 / ≤ 600 |
-| `auth.rate_limit.token_verifications`, `sign_in_sign_ups` | ≤ 30 por 5 min |
+| `auth.email.otp_length` / `otp_expiry` | exatamente 10 / 300 |
+| `auth.email.notification.password_changed.enabled`, `email_changed.enabled` | true |
+| `auth.rate_limit.token_verifications` | exatamente 10 por 5 min |
+| `auth.rate_limit.sign_in_sign_ups` | ≤ 30 por 5 min |
 | `auth.rate_limit.email_sent` | ≤ 300 por hora |
 | `auth.external.*.enabled`, MFA, `auth.sms.enabled` | false, salvo marcador de exceção |
 | `auth.external.slack` | proibido; o identificador aceito é `auth.external.slack_oidc` |
@@ -413,8 +431,9 @@ extra são `enable_anonymous_sign_ins` e `enable_manual_linking` (exigem CAPTCHA
 projeto hospedado; `config push` ainda requer um alvo autorizado e conferência do diff remoto.
 Chaves sem representação na CLI, como SAML, permanecem em uma lista de conferência manual.
 
-Notificações de segurança do Auth (aviso por e-mail quando a senha ou o e-mail muda) ficam
-ligadas se a versão do Supabase tiver o recurso (spike S-AU-3b).
+GoTrue 2.198 oferece notificações de segurança quando a senha ou o e-mail muda. A configuração
+do template habilita as duas notificações e inclui conteúdo localizado; as entregas locais foram
+verificadas nos três idiomas após reiniciar a Auth com a configuração nova.
 
 **SMTP por ambiente (decisão de 2026-11-24).** O dono aprovou substituir o host
 fixo por `env(SMTP_HOST)`. A onda 0 versiona referências de ambiente, sem
@@ -452,15 +471,15 @@ derrube os e-mails institucionais.
 - Conta do Resend com 2FA e papéis mínimos; a credencial SMTP é uma chave **só de envio**,
   restrita a esse domínio, rotacionada a cada trimestre (how-to de rotação).
 - O Resend guarda o corpo dos e-mails (incluindo o código). Reduzir a retenção de conteúdo ao
-  mínimo que o plano permitir; o que sobrar é risco residual R21 (código de uso único com 600 s
+  mínimo que o plano permitir; o que sobrar é risco residual R21 (código de uso único com 300 s
   de vida; acesso à conta do Resend protegido por 2FA).
 - Alerta de reputação: o Resend avisa o dono da conta por e-mail antes de suspender; o dono é
   uma caixa monitorada. Limiares de ação: bounce ≥ 2% ou reclamação ≥ 0,05% (os limites do
   provedor são 4% e 0,08%). Nas 4 primeiras semanas depois do lançamento, revisão diária do
   painel; depois, semanal (runbook `docs/how-to/email-abuse-response.md`).
-- Alerta de volume de envio não entra na W2: `auth.audit_log_entries` ainda não tem um
-  mapeamento aprovado para `email_sent`. Depois do spike S-AU-4, o alerta conserva os limiares
-  já especificados de 70% e 90%; qualquer canal externo exige ADR próprio. O app e a página de exclusão reportam ao Sentry
+- Alerta de volume de envio não entra na W2: S-AU-4 identificou ações por fluxo, mas não um
+  contador global confiável de `email_sent` em `auth.audit_log_entries`. O alerta conserva os
+  limiares já especificados de 70% e 90%; qualquer canal externo exige ADR próprio. O app e a página de exclusão reportam ao Sentry
   o erro `over_email_send_rate_limit` (evento sem PII, `fingerprint` fixo; regra: 3 eventos em
   10 min).
 - Runbook (`docs/how-to/email-abuse-response.md`): reduzir `email_sent` e
@@ -631,9 +650,9 @@ direto para a tela.
 | **Pré-sequestro:** atacante cadastra o e-mail da vítima com senha direto na API do Auth, não confirma; depois a vítima entra por código | a senha do atacante não pode continuar valendo depois que a vítima confirma o e-mail (plano A ou B de §3.2). Teste de integração bloqueante: o atacante chama `signUp` com senha, a vítima faz `signInWithOtp` e `verifyOtp`, e o `signInWithPassword` do atacante falha |
 | E-mail já cadastrado tenta cadastro de novo | resposta igual a sucesso ("verifique seu e-mail"); sem vazamento |
 | E-mail digitado com maiúsculas ou espaços | o app normaliza (trim + minúsculas) antes de qualquer chamada |
-| Código vencido (600 s) | `otp_expired`: mensagem "código vencido" e botão de reenvio |
+| Código vencido (300 s) | `otp_expired`: mensagem "código vencido" e botão de reenvio |
 | Reenvio de código | botão desabilitado por 60 s com contagem regressiva (alinhado a `max_frequency`) |
-| Código errado várias vezes | o Auth limita por IP (30 em 5 min; 10 no plano B de S-AU-4); o app mostra "código inválido" e, no limite, "aguarde e tente de novo", sem dizer o motivo exato |
+| Código errado várias vezes | o Auth não invalidou o código correto após dez erros e o agrupamento IPv6 não foi provado; a configuração usa limite de 10 verificações por 5 min por IP. O app mostra "código inválido" e, no 429, "aguarde e tente de novo", sem dizer o motivo exato |
 | `over_email_send_rate_limit` (orçamento do projeto esgotado) | mensagem genérica "não foi possível enviar agora, tente em alguns minutos"; métrica e alerta (R-ID-3) |
 | Sessão adulterada ou chave do SecureStore perdida | sign-out limpo e mensagem "sua sessão expirou" |
 | Refresh token revogado ou reutilizado | o refresh falha; o app limpa a sessão e volta a Boas-vindas |
@@ -653,9 +672,9 @@ direto para a tela.
 |---|-------|------------------|
 | R-ID-1 | O access token vale até 15 min depois de "sair de todos os aparelhos", troca de senha ou exclusão (verificação local, sem introspecção) | vida curta do token; conta excluída tem o marcador `auth.account_deleted` |
 | R-ID-2 | A API do Supabase Auth, chamada com a publishable key, permite enumerar e-mails (ex.: OTP com `shouldCreateUser: false`, usado pela página de exclusão) | o app e a nossa API não revelam nada; só um CAPTCHA (extensão) reduz isso |
-| R-ID-3 | **O base-app não tem limite de e-mails por destinatário.** Só há `max_frequency` (1 e-mail por minuto por endereço) e os limites por IP do Auth. O orçamento `email_sent` (60 por hora) é **global do projeto**: um atacante com vários IPs pode esgotá-lo e impedir o login e a exclusão de conta de todos, ou encher a caixa de uma vítima (até ~60 e-mails por hora) | aceito **somente** com o teto `email_sent`, o domínio de envio dedicado com SPF, DKIM e DMARC (§3.8), o alerta de volume em 70% e 90%, o alerta de Sentry e o runbook `email-abuse-response`. O `CaptchaProvider` (ID-14) é o caminho de endurecimento em versões derivadas |
-| R-ID-6 | O Resend guarda o corpo dos e-mails, incluindo o código (R21 do threat model) | código de uso único e 600 s; 2FA e papéis mínimos na conta; retenção mínima do plano |
-| R-ID-4 | Quem roubar um access token pode chamar o Auth direto (ex.: `updateUser({ data })`), fora do nosso `requireRecentAuth` | troca de senha e de e-mail exigem código por e-mail (ID-06, ID-07); avisos de segurança por e-mail |
+| R-ID-3 | **O base-app não tem limite de e-mails por destinatário.** Só há `max_frequency` (1 e-mail por minuto por endereço) e os limites por IP do Auth. O orçamento `email_sent` (60 por hora) é **global do projeto**: um atacante com vários IPs pode esgotá-lo e impedir o login e a exclusão de conta de todos, ou encher a caixa de uma vítima (até ~60 e-mails por hora) | aceito **somente** com o teto `email_sent`, domínio dedicado com SPF, DKIM e DMARC (§3.8), conferência do uso em 70% e 90%, Sentry em `over_email_send_rate_limit` e runbook `email-abuse-response`. A conferência global é operacional porque o log Auth não fornece contador de e-mails. O `CaptchaProvider` (ID-14) é o caminho de endurecimento em versões derivadas |
+| R-ID-6 | O Resend guarda o corpo dos e-mails, incluindo o código (R21 do threat model) | código de uso único e 300 s; 2FA e papéis mínimos na conta; retenção mínima do plano |
+| R-ID-4 | Quem roubar um access token pode chamar o Auth direto (ex.: `updateUser({ password })`) e, numa sessão recente, trocar a senha sem `nonce`, fora do fluxo de código do app | o app sempre exige `reauthenticate()` com `nonce` e login recente; avisos de troca entregues localmente nos três idiomas; o endpoint público do Auth continua aceitando chamadas diretas com sessão recente |
 | R-ID-5 | A trilha de login e de troca de senha/e-mail fica só nos logs do Auth (a API não vê essas chamadas) | retenção da plataforma; ver Q-AU-3 |
 
 ## 7. Plano de testes
@@ -668,6 +687,10 @@ direto para a tela.
 - `requireRecentAuth`: dentro e fora da janela; `amr` vazio; `amr` com vários métodos.
 - `encrypted-storage`: ida e volta; IV diferente a cada gravação; tag adulterada, versão
   desconhecida e chave ausente levam a sign-out; AAD trocado falha.
+- Restauração com access token expirado e erro de rede temporário preserva a
+  sessão cifrada e não fornece token à API; refresh inválido/revogado limpa.
+  Reconexão executa revalidação antes de `GET /v1/me` e aplica consentimentos
+  atuais ou pendentes; resposta tardia não substitui outra sessão.
 - Máquina de estados do login (e-mail → código → consentimento), contagem de reenvio,
   normalização do e-mail, validação de senha (10 caracteres, letras e dígitos, 72 bytes).
 - Mapeamento dos erros do SDK para chaves de i18n; nenhuma mensagem do SDK vai para a tela.
@@ -704,13 +727,13 @@ direto para a tela.
 - Confirmação obrigatória: `signInWithPassword` antes de confirmar falha; depois de confirmar
   funciona.
 - Redefinição por código ponta a ponta; as outras sessões são encerradas.
-- Troca de senha sem `nonce` é recusada; com `nonce` correto passa.
+- Troca de senha sem `nonce` passa em sessão recém-autenticada; com `nonce` de `reauthenticate()` também passa. O app exige o segundo fluxo; uma chamada direta ao Auth permanece risco residual.
 - Troca de e-mail só vale depois dos dois códigos.
 - `userScopedDb` com `user_metadata` contendo aspas e `;` não altera a query (as claims vão
   por bind e sem `user_metadata`).
 - Token de usuário excluído → 401 `auth.account_deleted` (marcador) e, sem o marcador, pela
   violação de FK.
-- Templates: o e-mail renderizado nos três idiomas; `locale` malicioso não aparece no corpo.
+- Templates de autenticação e de segurança: e-mails renderizados nos três idiomas; `locale` ausente, desconhecido ou de tipo inesperado cai em pt-BR e nunca é impresso.
 - Nenhum log nem evento do Sentry contém e-mail, código ou token (teste de redaction).
 
 **E2E (Maestro)**
@@ -731,8 +754,9 @@ direto para a tela.
 - [ ] O teste de pré-sequestro passa (bloqueia o release se falhar) e o spike S-AU-2 registrou
       o plano escolhido.
 - [ ] Login anônimo e vínculo manual só passam no `config:check` com `# allow-override` e CAPTCHA ligado.
-- [ ] `pnpm supabase:config:check` passa no `config.toml` gerado (OTP de 8 dígitos e 600 s, limites
-      por IP, `email_sent`, superfícies desligadas, hook de contas novas).
+- [ ] `pnpm supabase:config:check` passa no `config.toml` gerado (OTP de 10 dígitos e 300 s, limite
+      de 10 verificações por 5 min, notificações de troca habilitadas, limites por IP, `email_sent`,
+      superfícies desligadas e hook de contas novas).
 - [ ] SPF, DKIM e DMARC do subdomínio de envio estão verificados e o runbook
       `email-abuse-response` existe.
 - [ ] Sessão adulterada no armazenamento leva a sign-out sem travar o app.
@@ -744,11 +768,11 @@ direto para a tela.
 
 | # | Item | Padrão adotado até decisão |
 |---|------|----------------------------|
-| S-AU-1 | Os templates do Supabase escolhem o idioma por `{{ .Data.locale }}` em todos os tipos de e-mail? O assunto aceita ramos? | ramos fixos no corpo; assunto neutro e trilíngue se o assunto não aceitar |
-| S-AU-2 (onda 6, primeiro) | Pré-sequestro: o Auth invalida a senha de um cadastro não confirmado quando o dono do e-mail confirma por código? Qual `type` o `verifyOtp` aceita (`email` ou `signup`)? O `migrator` consegue criar o trigger em `auth.users`? | **Plano B** (§3.2). Se a senha do atacante for invalidada de forma nativa, vale o plano A e o trigger fica como defesa em profundidade |
-| S-AU-3a (onda 6) | Troca de e-mail com `double_confirm_changes` e OTP: parâmetros exatos dos dois `verifyOtp` | dois códigos com `type: 'email_change'` |
-| S-AU-3b (onda 6) | A troca de senha exige o `nonce` sempre, ou o Auth isenta sessões recentes (a documentação fala em janela de 24 h)? Existem notificações de segurança por e-mail? | exige o `nonce`; sem notificação nativa, ficam só os códigos. Se o `nonce` puder ser dispensado, AU-7 sobe de gravidade e a troca de senha passa a exigir também o login recente no app |
-| S-AU-4 (onda 6, bloqueante) | O Auth invalida o OTP depois de N tentativas erradas? O limite por IP agrupa o IPv6 por /64? Chave e efeito de `max_frequency`; quais ações de `auth.audit_log_entries` contam como envio de e-mail? | **Plano A:** 8 dígitos, 600 s e 30 verificações por 5 min. **Plano B**, se não houver invalidação por tentativas ou o IPv6 não for agrupado: 10 dígitos, 300 s e 10 verificações por 5 min (chance de 1% exigiria 10^8 tentativas), mais a recomendação de CAPTCHA para app público |
+| S-AU-1 | Os templates do Supabase escolhem o idioma por `{{ .Data.locale }}` em todos os tipos de e-mail? O assunto aceita ramos? | **Concluído:** cinco tipos passaram no teste de seleção de ramo; o English body vazio após refactor foi corrigido. Reautenticação EN passou conteúdo real e email-change OTP passou corpo/assunto/OTP/prazo/aviso nos três idiomas. Locale ausente, desconhecido, objeto, array e número caíram em pt-BR sem imprimir o valor. Ver [resultados W6](../plan/wave-6-auth-spikes.md) |
+| S-AU-2 (onda 6, primeiro) | Pré-sequestro: o Auth invalida a senha de um cadastro não confirmado quando o dono do e-mail confirma por código? Qual `type` o `verifyOtp` aceita (`email` ou `signup`)? A migration consegue criar o trigger em `auth.users`? | **Plano B selecionado e provado:** sign-in por senha rejeitado antes da confirmação (`email_not_confirmed`) e depois da confirmação da vítima (`invalid_credentials`); cadastro OTP-only aceita `email`, define senha após confirmar e entra. Migration aplicada localmente; pgTAP e teste de aceite passaram |
+| S-AU-3a (onda 6) | Troca de e-mail com `double_confirm_changes` e OTP: parâmetros exatos dos dois `verifyOtp` | **Concluído:** dois códigos `email_change`; a primeira confirmação manteve o endereço antigo e a segunda alterou o ativo. Aviso localizado no endereço anterior recebido e validado em PT/EN/ES |
+| S-AU-3b (onda 6) | A troca de senha exige o `nonce` sempre, ou o Auth isenta sessões recentes? Existem notificações de segurança por e-mail? | **Concluído:** uma sessão recém-autenticada alterou a senha sem `nonce`; com `nonce` também passou. O app sempre exige `reauthenticate()` e envia o nonce. Avisos de senha entregues e validados em PT/EN/ES |
+| S-AU-4 (onda 6, bloqueante) | O Auth invalida o OTP depois de N tentativas erradas? O limite por IP agrupa o IPv6 por /64? Chave e efeito de `max_frequency`; quais ações de `auth.audit_log_entries` contam como envio de e-mail? | **Plano B selecionado:** código correto aceito após dez tentativas erradas; `/64` não provado. Perfil 10 dígitos / 300 s / 10 verificações. `max_frequency` bloqueou reenvio com 429; ações observadas: `user_confirmation_requested`, `user_recovery_requested`, `user_reauthenticate_requested`, `user_modified`. Sem contador global confiável de `email_sent`; CAPTCHA segue recomendado para app público |
 | Q-AU-1 | O Supabase não tem chave separada para ligar e desligar login por código e por senha no mesmo provedor de e-mail | "método desligado" vale para o app e para o contrato; o `config.toml` mantém o provedor de e-mail ligado |
 | Q-AU-2 | MFA (TOTP) para o usuário final | fora da v1; o Supabase suporta quando for necessário |
 | Q-AU-3 | Auditar troca de senha e de e-mail em `audit.events` | **não**: as chamadas não passam pela API; o log de auditoria do Supabase Auth as cobre (ADR 0009 alinhado) |

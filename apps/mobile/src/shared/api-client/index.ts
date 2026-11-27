@@ -32,6 +32,47 @@ const unavailableApiSession: ApiSessionPort = {
 };
 
 let defaultClient: ApiClient | null = null;
+type ApiSessionRegistration = {
+  readonly id: symbol;
+  readonly session: ApiSessionPort;
+  readonly onAccountDeleted: (userId: string | null) => Promise<void>;
+};
+const apiSessionRegistrations: ApiSessionRegistration[] = [];
+
+function activeApiSession(): ApiSessionPort {
+  return (
+    apiSessionRegistrations[apiSessionRegistrations.length - 1]?.session ?? unavailableApiSession
+  );
+}
+
+function activeAccountDeletedHandler(userId: string | null): Promise<void> {
+  return (
+    apiSessionRegistrations[apiSessionRegistrations.length - 1]?.onAccountDeleted(userId) ??
+    Promise.resolve()
+  );
+}
+
+/** Installs the active Auth session for the shared API client. */
+export function installApiSession(
+  session: ApiSessionPort,
+  onAccountDeleted: (userId: string | null) => Promise<void> = async () => undefined,
+): () => void {
+  const registration: ApiSessionRegistration = {
+    id: Symbol('shared-api-session'),
+    session,
+    onAccountDeleted,
+  };
+  apiSessionRegistrations.push(registration);
+  defaultClient = null;
+
+  return () => {
+    const index = apiSessionRegistrations.findIndex((entry) => entry.id === registration.id);
+    if (index !== -1) {
+      apiSessionRegistrations.splice(index, 1);
+      defaultClient = null;
+    }
+  };
+}
 
 function getDefaultClient(): ApiClient {
   if (defaultClient !== null) {
@@ -47,7 +88,7 @@ function getDefaultClient(): ApiClient {
     appVersion: Application.nativeApplicationVersion ?? '0.0.0',
     platform: Platform.OS,
     fetch: globalThis.fetch,
-    session: unavailableApiSession,
+    session: activeApiSession(),
     createRequestId: createUuidV7,
     translate: translateMobile,
     telemetry: {
@@ -69,6 +110,7 @@ function getDefaultClient(): ApiClient {
       });
     },
     onAppGate: publishApiAppGate,
+    onAccountDeleted: (userId) => activeAccountDeletedHandler(userId),
   });
   return defaultClient;
 }

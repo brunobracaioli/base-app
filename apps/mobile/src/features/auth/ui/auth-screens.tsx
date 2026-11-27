@@ -336,12 +336,14 @@ export function EmailCodeStartScreen() {
           onPress={() => router.push('/(auth)/password')}
         />
       )}
-      <ActionButton
-        label={t('createAccount')}
-        testID="auth.sign-up-link"
-        secondary
-        onPress={() => router.push('/(auth)/sign-up')}
-      />
+      {product.auth.methods.includes('email_password') && (
+        <ActionButton
+          label={t('createAccount')}
+          testID="auth.sign-up-link"
+          secondary
+          onPress={() => router.push('/(auth)/sign-up')}
+        />
+      )}
       <FieldErrorText error={fieldError} />
     </ScreenFrame>
   );

@@ -5,7 +5,11 @@ import { Pressable, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { AppConfigProvider } from '../features/app-config/ui/app-config-provider';
-import { AppConfigBootBridge, AppProviders } from '../features/shell/ui/app-providers';
+import {
+  AppConfigBootBridge,
+  AppProviders,
+  AuthRuntimeBootstrap,
+} from '../features/shell/ui/app-providers';
 import { initializeSentry } from '../shared/telemetry/sentry';
 
 initializeSentry(process.env.EXPO_PUBLIC_SENTRY_DSN);
@@ -15,12 +19,14 @@ function RootLayout() {
     <AppProviders>
       <AppConfigProvider>
         <AppConfigBootBridge>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(gates)" />
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(app)" />
-            <Stack.Screen name="(ext)" />
-          </Stack>
+          <AuthRuntimeBootstrap>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(gates)" />
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(app)" />
+              <Stack.Screen name="(ext)" />
+            </Stack>
+          </AuthRuntimeBootstrap>
         </AppConfigBootBridge>
       </AppConfigProvider>
     </AppProviders>

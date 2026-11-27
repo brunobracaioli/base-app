@@ -7,6 +7,7 @@ import { generatePgtapRegistrySql, loadPgtapRegistryRows } from './generate-pgta
 const temporaryRoots: string[] = [];
 const migration = '20261125120000_core_auth_helpers.sql';
 const w4Migration = '20261125210517_w4_identity_profile_consents_fresh_roles.sql';
+const w6Migration = '20261127015300_w6_email_auth_safety.sql';
 
 const coreAuthFunctions = [
   {
@@ -26,6 +27,15 @@ const coreAuthFunctions = [
     owner: 'postgres',
     executeCallers: ['ops'],
     purpose: 'Returns only a bounded count.',
+  },
+  {
+    schema: 'identity',
+    name: 'clear_unverified_password',
+    signature: '()',
+    migration: w6Migration,
+    owner: 'postgres',
+    executeCallers: ['supabase_auth_admin'],
+    purpose: 'Clears a password set before email ownership is proven.',
   },
   {
     schema: 'identity',
@@ -86,6 +96,9 @@ describe('generatePgtapRegistrySql', () => {
     expect(first).toContain('create table test_support.expected_core_auth_fn_registry');
     expect(first).toContain(
       `('identity', 'before_user_created', '(jsonb)', '${migration}', 'postgres', ARRAY['supabase_auth_admin']::text[], 'Enforces the signup ceiling.')`,
+    );
+    expect(first).toContain(
+      `('identity', 'clear_unverified_password', '()', '${w6Migration}', 'postgres', ARRAY['supabase_auth_admin']::text[], 'Clears a password set before email ownership is proven.')`,
     );
     expect(first).toContain(
       'revoke all on schema test_support from public, anon, authenticated, api_runtime;',

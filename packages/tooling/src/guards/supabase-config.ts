@@ -38,6 +38,8 @@ const protectedFixedPaths = new Set([
   'auth.email.enable_confirmations',
   'auth.email.otp_length',
   'auth.email.otp_expiry',
+  'auth.email.notification.password_changed.enabled',
+  'auth.email.notification.email_changed.enabled',
   'auth.rate_limit.sign_in_sign_ups',
   'auth.rate_limit.token_verifications',
   'auth.rate_limit.email_sent',
@@ -406,6 +408,13 @@ export function validateSupabaseConfig(
     if (email[key] !== true) throw new SupabaseConfigError(`auth.email.${key} must be true.`);
   }
 
+  const emailNotifications = requiredObject(email.notification, 'auth.email.notification');
+  for (const key of ['password_changed', 'email_changed'] as const) {
+    const notification = requiredObject(emailNotifications[key], `auth.email.notification.${key}`);
+    if (notification.enabled !== true)
+      throw new SupabaseConfigError(`auth.email.notification.${key}.enabled must be true.`);
+  }
+
   validateHttpsRedirects(auth.additional_redirect_urls);
 
   const sms = requiredObject(auth.sms, 'auth.sms');
@@ -431,14 +440,20 @@ export function validateSupabaseConfig(
 
   const otpLength = requiredNumber(email.otp_length, 'auth.email.otp_length');
   const otpExpiry = requiredNumber(email.otp_expiry, 'auth.email.otp_expiry');
-  if (otpLength < 8 || otpLength > 10)
-    throw new SupabaseConfigError('auth.email.otp_length must be between 8 and 10 digits.');
-  if (otpExpiry <= 0 || otpExpiry > 600)
-    throw new SupabaseConfigError('auth.email.otp_expiry must be between 1 and 600 seconds.');
+  if (otpLength !== 10) throw new SupabaseConfigError('auth.email.otp_length must be 10 digits.');
+  if (otpExpiry !== 300)
+    throw new SupabaseConfigError('auth.email.otp_expiry must be 300 seconds.');
+
+  const tokenVerificationLimit = requiredNumber(
+    rateLimit.token_verifications,
+    'auth.rate_limit.token_verifications',
+  );
+  if (tokenVerificationLimit !== 10)
+    throw new SupabaseConfigError('auth.rate_limit.token_verifications must be 10 per 5 minutes.');
 
   for (const [key, cap] of [
     ['sign_in_sign_ups', 30],
-    ['token_verifications', 30],
+    ['token_verifications', 10],
     ['email_sent', 300],
   ] as const) {
     const value = requiredNumber(rateLimit[key], `auth.rate_limit.${key}`);

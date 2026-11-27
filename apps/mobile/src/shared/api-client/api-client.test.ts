@@ -1,4 +1,5 @@
 import { AppConfigResponse, coreEndpoints, ProblemDetailsSchema } from '@base-app/contracts';
+import * as z from 'zod';
 import { createMobileI18n, setActiveMobileI18n, translateMobile } from '../i18n';
 import { createApiClient, createUuidV7, ApiRequestError } from './api-client';
 
@@ -31,6 +32,45 @@ describe('typed API client', () => {
   it('creates a UUIDv7 request identifier', () => {
     const id = createUuidV7(1_700_000_000_000, new Uint8Array(16));
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  });
+
+  it('accepts a 204 contract response without attempting to parse a JSON body', async () => {
+    const consentContract = coreEndpoints.find(
+      ({ operationId }) => operationId === 'acceptConsent',
+    );
+    if (consentContract === undefined) throw new Error('Missing consent endpoint contract.');
+    expect(consentContract.successStatus).toBe(204);
+    const noContent = response(undefined, 204);
+    const fetch = jest
+      .fn<Promise<Response>, Parameters<typeof globalThis.fetch>>()
+      .mockResolvedValue(noContent);
+    const client = createApiClient({
+      baseUrl: 'https://api.example.invalid',
+      appVersion: '1.2.3',
+      platform: 'ios',
+      fetch,
+      session: {
+        getAccessToken: jest.fn().mockResolvedValue(null),
+        refreshSession: jest.fn().mockResolvedValue(null),
+        signOutLocal: jest.fn().mockResolvedValue(undefined),
+      },
+      createRequestId: () => requestId,
+      translate: (key) => key,
+    });
+
+    await expect(
+      client.request(
+        {
+          method: consentContract.method,
+          path: consentContract.path,
+          security: consentContract.security,
+          successStatus: consentContract.successStatus,
+          responseSchema: z.undefined(),
+        },
+        { body: { consentType: 'terms', version: '1.0' } },
+      ),
+    ).resolves.toBeUndefined();
+    expect(noContent.json).not.toHaveBeenCalled();
   });
 
   it('records safe request and response correlation breadcrumbs, including successful responses', async () => {
@@ -77,6 +117,90 @@ describe('typed API client', () => {
     expect(breadcrumbData).not.toContain('opaque-token');
     expect(breadcrumbData).not.toContain('must-not-be-logged');
     expect(breadcrumbData).not.toContain('/v1/health');
+  });
+
+  it('clears the Auth session before the account-deleted lifecycle callback', async () => {
+    const problem = ProblemDetailsSchema.parse({
+      type: 'about:blank',
+      title: 'Unauthorized',
+      status: 401,
+      code: 'auth.account_deleted',
+      requestId,
+    });
+    const events: string[] = [];
+    const signOutLocal = jest.fn(async () => {
+      events.push('session-cleared');
+    });
+    const onAccountDeleted = jest.fn(async () => {
+      events.push('lifecycle-cleanup');
+    });
+    const client = createApiClient({
+      baseUrl: 'https://api.example.invalid',
+      appVersion: '1.2.3',
+      platform: 'ios',
+      fetch: jest
+        .fn<Promise<Response>, Parameters<typeof globalThis.fetch>>()
+        .mockResolvedValue(response(problem, 401, 'application/problem+json')),
+      session: {
+        getAccessToken: jest.fn().mockResolvedValue('local-session-token'),
+        refreshSession: jest.fn().mockResolvedValue(null),
+        signOutLocal,
+      },
+      createRequestId: () => requestId,
+      translate: (key) => key,
+      onAccountDeleted,
+    });
+
+    await expect(client.request(privateHealthEndpoint)).rejects.toMatchObject({
+      code: 'auth.account_deleted',
+      status: 401,
+    });
+
+    expect(events).toEqual(['session-cleared', 'lifecycle-cleanup']);
+    expect(onAccountDeleted).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not sign out a new account for an account-deleted response to the previous session', async () => {
+    const problem = ProblemDetailsSchema.parse({
+      type: 'about:blank',
+      title: 'Unauthorized',
+      status: 401,
+      code: 'auth.account_deleted',
+      requestId,
+    });
+    const getAuthContext = jest
+      .fn()
+      .mockResolvedValueOnce({ accessToken: 'old-access-token', userId: 'user-a' })
+      .mockResolvedValueOnce({ accessToken: 'new-access-token', userId: 'user-b' });
+    const signOutLocalIfUserMatches = jest.fn().mockResolvedValue(false);
+    const signOutLocal = jest.fn().mockResolvedValue(undefined);
+    const onAccountDeleted = jest.fn().mockResolvedValue(undefined);
+    const client = createApiClient({
+      baseUrl: 'https://api.example.invalid',
+      appVersion: '1.2.3',
+      platform: 'ios',
+      fetch: jest
+        .fn<Promise<Response>, Parameters<typeof globalThis.fetch>>()
+        .mockResolvedValue(response(problem, 401, 'application/problem+json')),
+      session: {
+        getAccessToken: jest.fn().mockResolvedValue('new-access-token'),
+        getAuthContext,
+        signOutLocalIfUserMatches,
+        refreshSession: jest.fn().mockResolvedValue(null),
+        signOutLocal,
+      },
+      createRequestId: () => requestId,
+      translate: (key) => key,
+      onAccountDeleted,
+    });
+
+    await expect(client.request(privateHealthEndpoint)).rejects.toMatchObject({
+      code: 'auth.account_deleted',
+    });
+
+    expect(signOutLocalIfUserMatches).toHaveBeenCalledWith('user-a');
+    expect(signOutLocal).not.toHaveBeenCalled();
+    expect(onAccountDeleted).not.toHaveBeenCalled();
   });
 
   it('omits malformed server correlation IDs and uses a valid server ID for contract mismatches', async () => {
@@ -479,14 +603,18 @@ describe('typed API client', () => {
       .fn<Promise<Response>, Parameters<typeof globalThis.fetch>>()
       .mockResolvedValue(response({}, 401));
     const signOutLocal = jest.fn().mockResolvedValue(undefined);
+    let currentAccessToken = 'old-token';
     const client = createApiClient({
       baseUrl: 'https://api.example.invalid',
       appVersion: '1.2.3',
       platform: 'ios',
       fetch,
       session: {
-        getAccessToken: jest.fn().mockResolvedValue('old-token'),
-        refreshSession: jest.fn().mockResolvedValue('new-token'),
+        getAccessToken: jest.fn(async () => currentAccessToken),
+        refreshSession: jest.fn(async () => {
+          currentAccessToken = 'new-token';
+          return currentAccessToken;
+        }),
         signOutLocal,
       },
       createRequestId: () => requestId,

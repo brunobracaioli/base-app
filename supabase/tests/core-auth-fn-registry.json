@@ -11,6 +11,15 @@
     },
     {
       "schema": "identity",
+      "name": "clear_unverified_password",
+      "signature": "()",
+      "migration": "20261127015300_w6_email_auth_safety.sql",
+      "owner": "postgres",
+      "executeCallers": ["supabase_auth_admin"],
+      "purpose": "Clear a password set before email ownership was proven when the account receives its first email confirmation."
+    },
+    {
+      "schema": "identity",
       "name": "count_unconfirmed_users",
       "signature": "()",
       "migration": "20261125175958_w2_supabase_compatibility_baseline.sql",

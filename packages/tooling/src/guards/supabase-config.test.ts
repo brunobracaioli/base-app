@@ -30,8 +30,18 @@ enabled = true
 enable_confirmations = true
 double_confirm_changes = true
 secure_password_change = true
-otp_length = 8
-otp_expiry = 600
+otp_length = 10
+otp_expiry = 300
+
+[auth.email.notification.password_changed]
+enabled = true
+subject = "Password changed"
+content_path = "./templates/password-changed.html"
+
+[auth.email.notification.email_changed]
+enabled = true
+subject = "Email changed"
+content_path = "./templates/email-changed.html"
 
 [auth.email.smtp]
 enabled = false
@@ -41,7 +51,7 @@ pass = "env(RESEND_SMTP_PASSWORD)"
 [auth.rate_limit]
 email_sent = 60
 sign_in_sign_ups = 30
-token_verifications = 30
+token_verifications = 10
 
 [auth.hook.before_user_created]
 enabled = true
@@ -95,6 +105,47 @@ afterEach(async () => {
 });
 
 describe('Supabase TOML generator and invariant checker', () => {
+  it.each([
+    {
+      table: 'auth.email',
+      key: 'otp_length',
+      path: 'auth.email.otp_length',
+      value: '8',
+      message: /auth.email.otp_length must be 10 digits/,
+    },
+    {
+      table: 'auth.email',
+      key: 'otp_expiry',
+      path: 'auth.email.otp_expiry',
+      value: '600',
+      message: /auth.email.otp_expiry must be 300 seconds/,
+    },
+    {
+      table: 'auth.rate_limit',
+      key: 'token_verifications',
+      path: 'auth.rate_limit.token_verifications',
+      value: '30',
+      message: /auth.rate_limit.token_verifications must be 10 per 5 minutes/,
+    },
+  ])('requires the selected W6 OTP profile for $path', ({ table, key, path, value, message }) => {
+    const fragment = `[${table}]\n# allow-override: ${path} test a rejected OTP profile\n${key} = ${value}\n`;
+    expect(() =>
+      renderSupabaseConfig(baseConfig, [{ name: '10-weakened-otp.toml', contents: fragment }]),
+    ).toThrow(message);
+  });
+
+  it.each(['password_changed', 'email_changed'] as const)(
+    'requires the %s security notification to stay enabled',
+    (notification) => {
+      const fragment = `[auth.email.notification.${notification}]\n# allow-override: auth.email.notification.${notification}.enabled test that a security alert cannot be disabled\nenabled = false\n`;
+      expect(() =>
+        renderSupabaseConfig(baseConfig, [
+          { name: '10-disable-security-notification.toml', contents: fragment },
+        ]),
+      ).toThrow(`auth.email.notification.${notification}.enabled must be true.`);
+    },
+  );
+
   it('deep-merges fragments in lexical filename order and emits a stable override header', () => {
     const result = renderSupabaseConfig(baseConfig, [
       {

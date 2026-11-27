@@ -87,14 +87,14 @@ derivados (merge de `upstream`).
 
 | # | STRIDE | Cenário | P/I | Tratamento |
 |---|--------|---------|-----|------------|
-| AU-1 | D | O `email_sent` é orçamento do projeto inteiro; abuso distribuído esgota o envio e bloqueia login, redefinição e o código da página de exclusão de todos | A/A | R-ID-3 aceito com condições: teto `email_sent` de 60/h, alerta de volume em 70% e 90% (`ops.check_signals`), alerta de Sentry em `over_email_send_rate_limit`, runbook `email-abuse-response`, teto de 300 contas novas/h (identity §3.7, §3.8, ADR 0008). **G5 resolvida** |
+| AU-1 | D | O `email_sent` é orçamento do projeto inteiro; abuso distribuído esgota o envio e bloqueia login, redefinição e o código da página de exclusão de todos | A/A | R-ID-3 aceito com condições: teto `email_sent` de 60/h, conferência de uso em 70% e 90% pelo operador, Sentry em `over_email_send_rate_limit`, runbook `email-abuse-response`, teto de 300 contas novas/h (identity §3.7, §3.8, ADR 0008). `auth.audit_log_entries` não fornece contador global; verificação automatizada segue pendente |
 | AU-2 | D/R | Uso do domínio do produto para enviar e-mails não solicitados a terceiros (até ~60 por hora por tipo de e-mail e por endereço); queixas e rejeições levam o provedor a suspender o domínio ou a conta de envio | A/A | `max_frequency` de 60 s, domínio de envio dedicado com SPF, DKIM e DMARC `reject`, limiares de bounce e reclamação e runbook (identity §3.8). Alerta automático de bounce/complaint: R3 e R21. **G5 resolvida** |
-| AU-3 | S | Força bruta distribuída do OTP de 8 dígitos (600 s) de um e-mail-alvo; o limite por IP perde eficácia com rotação de IP e IPv6, e a invalidação do código após N erros não está confirmada | M/A | 8 dígitos, 600 s, 30 verificações por 5 min por IP, conferidos no CI (identity §3.7); spike S-AU-4 bloqueante da onda 6 com plano B (10 dígitos, 300 s, 10 verificações) (identity §8). **G4 resolvida** |
-| AU-4 | S | Pré-sequestro: o atacante cadastra o e-mail da vítima com senha antes dela; a senha pode sobreviver ao primeiro login legítimo por código | M/A | Plano B como padrão (cadastro por código, senha depois, trigger que zera a senha na primeira confirmação) até o spike S-AU-2 provar o plano A; teste de integração bloqueante (identity §3.2, §6, §8). **G1 resolvida** |
+| AU-3 | S | Força bruta distribuída do OTP de 10 dígitos (300 s) de um e-mail-alvo; o limite por IP perde eficácia com rotação de IP e IPv6; dez erros não invalidaram o código correto | M/A | Perfil plano B 10/300/10 exigido no CI (identity §3.7); o spike S-AU-4 não provou agrupamento IPv6 `/64`, portanto CAPTCHA é endurecimento recomendado para apps públicos. A configuração reduz a janela, mas não remove tentativa distribuída |
+| AU-4 | S | Pré-sequestro: o atacante cadastra o e-mail da vítima com senha antes dela; a senha pode sobreviver ao primeiro login legítimo por código | M/A | S-AU-2 confirmou que a senha sobrevive; plano B: cadastro por código e trigger `identity.clear_unverified_password()` que limpa senha direta na primeira confirmação. Migration, registry, pgTAP e teste local de ponta a ponta passaram na W6; cada versão derivada ainda valida seu ambiente (identity §3.2, §6, §8) |
 | AU-5 | I | Enumeração de e-mails chamando a API do Auth com a publishable key (inclui o OTP com `shouldCreateUser: false` usado pela página de exclusão) | A/B | App e API não revelam nada (identity ID-N4, §3.6); resto aceito em R-ID-2 (residual R2) |
 | AU-6 | S | Credential stuffing em `signInWithPassword`; o endpoint continua aceito mesmo com `email_password` desligado no produto | M/A | Política de senha e proteção contra senhas vazadas quando o plano permitir (ID-04); `sign_in_sign_ups` por IP (§3.7); efeito só de produto (Q-AU-1); sem CAPTCHA (ID-14). Residual R5 |
-| AU-7 | E | Com um access token roubado, trocar a senha sem o código, se o Auth isentar sessões recentes do `nonce` | B/A | `secure_password_change` e `reauthenticate()` (identity ID-06); confirmar que o `nonce` vale sempre (spike S-AU-3b, §6) |
-| AU-8 | T/E | Com um access token roubado, chamar o Auth direto (`updateUser`), fora do `requireRecentAuth` | B/A | Troca de senha e e-mail exigem código (ID-06, ID-07); avisos de segurança quando existirem; R-ID-4 (S-AU-3a e S-AU-3b) |
+| AU-7 | E | Com um access token roubado de sessão recente, trocar a senha sem o código: GoTrue aceita `updateUser({ password })` sem `nonce` | B/A | O app sempre exige novo `reauthenticate()` e envia `nonce`; `secure_password_change` não bloqueia chamada direta com sessão recente. Aviso de segurança habilitado no template; API direta permanece R-ID-4 (identity ID-06, §8) |
+| AU-8 | T/E | Com um access token roubado, chamar o Auth direto (`updateUser`), fora do `requireRecentAuth` | B/A | Troca de e-mail exige os dois códigos; chamada direta para senha pode dispensar código em sessão recente. App exige código e envia aviso de mudança; R-ID-4 continua residual (identity ID-06, ID-07, §8) |
 | AU-9 | T | Conteúdo injetado no e-mail via `user_metadata.locale` | B/M | O `locale` só escolhe ramos fixos do template e nunca é impresso (identity ID-12, §3.7; teste de template) |
 | AU-10 | S | Falsificação do domínio do produto (SPF, DKIM, DMARC não especificados) e leitura de códigos nos logs do provedor SMTP por quem tiver acesso à conta de e-mail | M/M | Subdomínio de envio dedicado, SPF, DKIM e DMARC `reject` (identity §3.8, ID-15); chave SMTP só de envio com escopo de domínio, 2FA, rotação trimestral; código no log do Resend: R21. **G15 resolvida** |
 | AU-11 | D | Cada pedido de OTP cria uma conta não confirmada; o acúmulo não é expurgado | M/B | `ops.purge_unconfirmed_users()` apaga contas não confirmadas com mais de 3 dias, diária (identity ID-17, ADR 0008). **G18 resolvida** |
@@ -255,7 +255,7 @@ regras de fronteira. Os itens abaixo cobrem extensão mal escrita ou maliciosa.
 | OP-1 | I | PII ou token em log, métrica, trace ou Sentry | M/A | Redaction por nome de chave, sem corpo de requisição, `sendDefaultPii: false`, `beforeSend`, teste de redaction (ADR 0009, base-app RNF-10, shell SH-N2); mensagem de log literal e filtro de valores em texto livre (ADR 0009). **G25 resolvida** |
 | OP-2 | D/T | DSN pública do Sentry usada para inundar eventos ou mascarar erros reais | M/B | DSN é pública por desenho; filtros de entrada e teto de gasto no how-to (residual R16) |
 | OP-3 | D | Denial of wallet: tráfego e comandos de Redis pagos por uso (Vercel, Upstash, Supabase, Resend) | M/A | Vercel Firewall, Spend Management, tetos de gasto e alertas na Vercel, Upstash, Resend e Supabase, e no máximo 4 comandos de Redis por requisição (base-app §3.13, how-to `cost-guardrails`). **G12 resolvida** |
-| OP-4 | D | Alertas dependem da mesma plataforma que pode estar fora; sem alerta de consumo de `email_sent` | M/M | Alertas do ADR 0009 mais `ops.check_signals()` (volume de e-mail, falha do `pg_cron`, volume de auditoria) e Sentry em `over_email_send_rate_limit` (ADR 0008, identity §3.8). **G5 resolvida** |
+| OP-4 | D | Alertas dependem da mesma plataforma que pode estar fora; não há contador Auth global confiável para uso de `email_sent` | M/M | `ops.check_signals()` persiste sinais de cron e volume de auditoria; o operador confere o orçamento de e-mail em 70%/90% no projeto Supabase pelo runbook. Sentry cobre `over_email_send_rate_limit`; alerta de volume automatizado segue pendente (ADR 0008, identity §3.8) |
 | OP-5 | I | Operadores recebem dado pessoal (transferência internacional, DPAs, retenção) | A/M | Inventário e papéis LGPD (privacy §1, §4.3); contratos e retenção mínima nos how-tos (residual R10) |
 
 ### 3.12 Pontos de extensão do núcleo (D1 a D14)
@@ -335,7 +335,7 @@ com as listas de extensão vazias; os riscos abaixo aparecem quando alguém as p
 |---|-------|--------------------------------|
 | R1 | Access token vale até 15 min depois de logout, "sair de todos", troca de senha ou exclusão; com Redis fora, o marcador de conta excluída não é checado | Sem introspecção por requisição; vida curta; a FK barra as escritas e as leituras não alcançam dado de outro usuário |
 | R2 | Enumeração de e-mail pela API do Auth com a publishable key | O app e a API não revelam nada; só CAPTCHA reduz (extensão) |
-| R3 | Sem limite de e-mails por destinatário no base-app | Aceito porque as condições de G5 estão especificadas: teto `email_sent`, domínio de envio dedicado com SPF, DKIM e DMARC, alertas de volume e de Sentry, runbook (identity §3.7, §3.8). A mitigação completa é o Send Email Hook das versões derivadas. Dono: operador do app. Gatilho de revisão: qualquer aviso de reputação do Resend |
+| R3 | Sem limite de e-mails por destinatário no base-app | Aceito com condições: teto `email_sent`, domínio dedicado com SPF/DKIM/DMARC, conferência operacional de uso em 70%/90%, Sentry em `over_email_send_rate_limit` e runbook (identity §3.7, §3.8). O Auth audit log não fornece contador global e bounce/complaint não têm alerta automático no núcleo. A mitigação por destinatário é Send Email Hook em versões derivadas. Dono: operador do app. Gatilho: qualquer aviso de reputação do Resend |
 | R4 | Quem controla a caixa de e-mail controla a conta | Raiz de confiança do login por OTP; mitigado por MFA do provedor de e-mail do usuário, fora do nosso controle |
 | R5 | Credential stuffing, cadastro em massa e cota gratuita exploráveis sem CAPTCHA ou attestation | Limites por IP do Auth e cota por usuário; CAPTCHA é ponto de extensão (ID-14) |
 | R6 | Janela de até 60 s de entitlements; sandbox e TestFlight dão acesso pago; transferência de assinatura entre contas | BI-11 e R-BI-1; o exemplo tem cota diária; ações caras usam `fresh` e podem exigir `isSandbox = false` |
@@ -349,11 +349,11 @@ com as listas de extensão vazias; os riscos abaixo aparecem quando alguém as p
 | R14 | Extensões e forks são código confiável no mesmo processo | Revisão e testes; sandbox seria um novo ADR |
 | R15 | Contas de painel (RevenueCat, Resend, Expo, lojas, Vercel, Supabase, Upstash) são cadeia de confiança | 2FA obrigatório e papéis mínimos no how-to de operação |
 | R16 | DSN pública do Sentry permite ruído | Filtros de entrada e teto de gasto |
-| R17 | Recursos de plano pago (senhas vazadas, teto de sessão, notificações de segurança) podem faltar | Ligados por ambiente quando o plano permitir; documentar o que muda |
+| R17 | Recursos de plano pago (proteção contra senhas vazadas, teto de sessão) podem faltar | Ligados por ambiente quando o plano permitir; documentar o que muda. Notificações de senha/e-mail são recursos de configuração do Auth, habilitados no template W6 |
 | R19 | Papéis e provedores em `app_metadata` podem permanecer no token até expirar (15 min mais a tolerância de 30 s) depois de alterados | Rotas `destructive` releem somente os papéis via `identity.read_fresh_roles`/`loadFreshRoles`; providers não são reconferidos por esse leitor. S-TM-3 provou propagação de metadata após refresh. G36 e ADR 0016 |
 | R18 | Feature real que use LLM no lugar de `doTheWork()` | Exige threat model próprio (OWASP LLM e Agentic Top 10) |
 | R20 | O widget de CAPTCHA de uma versão derivada executa na origem da página `/account-deletion`, que guarda uma sessão completa em memória (G29) | Mitigações obrigatórias e testadas: sessão só em memória, página sem outra função, CSP restrita a `script-src`, `frame-src` e `connect-src` com `https://<host>` (até 2 origens), widget desmontado antes do `verifyOtp`. A alternativa mais forte (etapa do e-mail em origem separada) fica como recomendação. Dono: mantenedor da versão derivada. Gatilho: adotar qualquer CAPTCHA, ou incidente no provedor do widget |
-| R21 | O Resend guarda o corpo dos e-mails (inclui o OTP) e não há alerta automático de bounce e reclamação: o Resend avisa o dono da conta por e-mail e o runbook manda revisar o painel (diário nas 4 primeiras semanas, depois semanal) (G5, G15) | Código de uso único e 600 s de vida; 2FA e papéis mínimos; retenção de conteúdo mínima do plano; limiares de ação (bounce ≥ 2%, reclamação ≥ 0,05%). Dono: operador do app. Gatilho: primeiro aviso de reputação, ou o Resend oferecer alerta ou webhook sem custo de rota nova |
+| R21 | O Resend guarda o corpo dos e-mails (inclui o OTP) e não há alerta automático de bounce e reclamação: o Resend avisa o dono da conta por e-mail e o runbook manda revisar o painel (diário nas 4 primeiras semanas, depois semanal) (G5, G15) | Código de uso único e 300 s de vida; 2FA e papéis mínimos; retenção de conteúdo mínima do plano; limiares de ação (bounce ≥ 2%, reclamação ≥ 0,05%). Dono: operador do app. Gatilho: primeiro aviso de reputação, ou o Resend oferecer alerta ou webhook sem custo de rota nova |
 | R22 | Outro aparelho do mesmo usuário, ainda aberto, pode recriar um cliente vazio no RevenueCat depois da purga (G27) | O cliente recriado só tem o `appUserID` (UUID de conta que já não existe); o app o limpa ao receber `auth.account_deleted`. Dono: mantenedor. Gatilho: o spike S-TM-1 mostrar recriação com dado além do UUID |
 | R23 | Alertas são apenas persistidos; se o pg_cron parar, até a detecção local para | Conferência semanal de `ops.alerts` e heartbeat no runbook. Notificador externo é configuração/projeto posterior do derivado, não entrega implementada. Dono: operador. Gatilho: primeira operação com usuários reais; ADRs 0008/0016 |
 | R24 | Quem tem o token do Upstash apaga o marcador `auth:deleted`, zera cotas e limpa rate limits (o cache de entitlements é assinado, o resto não) (G11) | Um banco e um token por ambiente, token Sensitive só em Production; a FK de `auth.users` barra escrita de conta excluída. Dono: operador. Gatilho: o Upstash oferecer ACL por comando no plano usado |
@@ -369,8 +369,8 @@ com as listas de extensão vazias; os riscos abaixo aparecem quando alguém as p
 | Spike | Pergunta | Impacto se a resposta for "não" |
 |-------|----------|--------------------------------|
 | S-AU-2 | O que acontece com a senha de um cadastro não confirmado quando o dono do e-mail entra por código? | Plano B (padrão) permanece; o plano A só vale com a prova (identity §3.2, §8; onda 6) |
-| S-AU-4 | O Auth invalida o OTP depois de N erros? Como o limite por IP trata IPv6 (por endereço ou por /64)? Como `max_frequency` e `email_sent` contam por tipo de e-mail? | Plano B do OTP (10 dígitos, 300 s, 10 verificações) e recomendação de CAPTCHA; ajusta o alerta de volume (onda 6) |
-| S-AU-3a e S-AU-3b | 3a: parâmetros dos dois `verifyOtp` da troca de e-mail. 3b: a troca de senha exige o `nonce` sempre, ou o Auth isenta sessões recentes (janela de 24 h na documentação)? Existem notificações de segurança? (onda 6) | AU-7 vira lacuna Alta; compensar exigindo login recente no app para a troca de senha |
+| S-AU-4 | O Auth invalida o OTP depois de N erros? Como o limite por IP trata IPv6 (por endereço ou por /64)? Como `max_frequency` e `email_sent` contam por tipo de e-mail? | Concluído: B 10/300/10; o código correto passou após dez erros; `/64` não provado; `max_frequency` bloqueou retry; ações conhecidas não formam contador global de `email_sent` |
+| S-AU-3a e S-AU-3b | 3a: parâmetros dos dois `verifyOtp` da troca de e-mail. 3b: a troca de senha exige o `nonce` sempre? Existem notificações de segurança? | Concluído: `email_change` nas duas confirmações; senha aceita sem `nonce` em sessão recente. App sempre requer código; notificações disponíveis e ligadas no template, entrega localizada aguardando rerun com a config aplicada |
 | S-PR-1 | `delete from auth.users` limpa identidades, sessões, fatores e `auth.audit_log_entries`? | G8 passa a exigir limpeza explícita; se não bastar, a chave secreta volta ao runtime (CI-10) |
 | S-DB-1 | `set_config` com bind funciona no pooler em modo transação? | Mudar a forma de acesso e reavaliar DB-1 a DB-3 |
 | S-BI-1 | Limites de taxa da API v2 por projeto, comportamento em 429 e `store`/`isSandbox` | Dimensiona G6 e BI-1 |
@@ -392,11 +392,11 @@ diferiu da proposta.
 
 | # | Situação | Onde (spec, ADR e onda) |
 |---|----------|-------------------------|
-| G1 | Resolvida | identity §3.2, §6, §8 e ADR 0004: plano B padrão, plano A só com prova; spike S-AU-2 e teste bloqueante na onda 6. Diferença: o trigger em `auth.users` (zera a senha na primeira confirmação) é o plano B junto com o cadastro por código |
+| G1 | Mitigada e testada localmente; hosted validation pendente | identity §3.2, §6, §8, ADR 0004: S-AU-2 selecionou plano B; migration, registry, pgTAP e rejeição de sign-in antes/depois da confirmação passaram no stack descartável W6 |
 | G2 | Resolvida | base-app §3.11, ADR 0012, ondas 0, 11 e 12: `security-baseline.json`, `security:doctor`, job `protections`, `bootstrap:init` aplica com confirmação, `CODEOWNERS`, `zizmor`. Diferença: usa rulesets (legíveis pelo `GITHUB_TOKEN`) em vez de proteção clássica de branch |
 | G3 | Resolvida | mobile-app-shell §3.6, ADR 0012, onda 12: `build` sem segredo e `sign-and-publish` sem instalar dependências. KMS com OIDC fica para quando existir |
-| G4 | Resolvida | identity §3.7, §8, ADR 0004, ondas 2 e 6: valores no `config.base.toml` e `supabase:config:check`; plano B de S-AU-4. Diferença: `otp_expiry` 600 s (decisão do dono), compensado pelo limite de 30 verificações por 5 min por IP |
-| G5 | Resolvida (com R3 e R21) | identity §3.7, §3.8, ADR 0004, ADR 0008, how-to `email-abuse-response`, ondas 2 e 6. Alerta automático de bounce e reclamação não entra (exigiria webhook no núcleo): R21 |
+| G4 | Plano decidido; implementação W6 pendente de gates | identity §3.7, §8, ADR 0004: plano B 10/300/10 no `config.base.toml` e `supabase:config:check`; IPv6 `/64` não foi provado e o OTP não invalida após dez erros, então apps públicos devem avaliar CAPTCHA |
+| G5 | Controles documentados; ativação operacional pendente | identity §3.7, §3.8, ADR 0004, ADR 0008 e how-to `email-abuse-response`. O domínio dedicado, DNS, medição real e regras do provedor precisam ser configurados no derivado; sem alerta automático de bounce/reclamação (R21) |
 | G6 | Resolvida | base-app §3.13, billing §3.2 (BI-N8), privacy §3.2, identity §3.7, ondas 1, 2, 7 e 9, com números |
 | G7 | Revisada pelo ADR 0016 | Funções Auth registradas e restritas do núcleo pertencem a `postgres`; funções de auditoria continuam com `ops`. GUC é vínculo transacional, não autenticação; purga futura segue a própria onda |
 | G8 | Resolvida | privacy §3.2, §7, PR-N1, onda 9 |
@@ -431,12 +431,13 @@ diferiu da proposta.
 
 ### Alta
 
-- **G1. Pré-sequestro sem plano B definido (AU-4).** O teste é bloqueante, mas o plano B está
-  "a definir" (S-AU-2). Mesmo com `email_password` desligado no produto o Auth aceita o
-  cadastro por senha (Q-AU-1), então a superfície existe sempre.
-  *Mitigação:* definir já o desenho que elimina a classe: cadastro por e-mail sempre começa por
-  OTP e a senha só é definida depois do primeiro login verificado (`updateUser` com `nonce`);
-  `signUp` com senha deixa de ser usado. O spike apenas confirma se dá para manter o fluxo atual.
+- **G1. Pré-sequestro (AU-4).** Mesmo com `email_password` desligado no produto, o Auth aceita
+  cadastro direto por senha (Q-AU-1); S-AU-2 confirmou que essa senha sobrevive à confirmação
+  legítima da vítima.
+  *Mitigação:* plano B selecionado: cadastro do app por OTP e senha depois; o trigger
+  `identity.clear_unverified_password()` zera senha de cadastro direto na primeira confirmação.
+  Migration, pgTAP e fluxo local de sign-in antes/depois da confirmação passaram na W6. Cada
+  projeto derivado ainda deve aplicar e validar sua própria configuração/migration antes do uso.
   *Spec:* `identity-and-auth.md` (§3.2, §6, §8).
 - **G2. As proteções do GitHub não viajam com o template (CI-1, CI-2, CI-6, CI-11).** Revisores
   de Environment, restrição de branch de deploy, ruleset de tags, branch protection e secret
@@ -457,20 +458,19 @@ diferiu da proposta.
   federação OIDC quando o tooling permitir; registrar rotação e o plano de perda de chave (o
   certificado fica embutido no app).
   *Spec:* `mobile-app-shell.md` (§3.6, Q-SH-2) e `ADR 0012`.
-- **G4. Força bruta do OTP depende de comportamentos não confirmados (AU-3).** Não se sabe se o
-  Auth invalida o código após erros nem como o limite por IP trata IPv6; sem CAPTCHA no base-app.
-  *Mitigação:* tornar S-AU-4 bloqueante da onda 6 com regra de decisão: se não houver
-  invalidação por tentativas ou o IPv6 não for agrupado por /64, reduzir `token_verifications`
-  e `otp_expiry` e adotar OTP de 10 dígitos; documentar o CAPTCHA como endurecimento
-  recomendado para apps públicos.
+- **G4. Força bruta do OTP (AU-3).** S-AU-4 observou que o Auth aceitou o código correto depois
+  de dez erros e não provou o agrupamento IPv6 `/64`; não há CAPTCHA no núcleo.
+  *Mitigação:* plano B 10/300/10 obrigatório no guard e recomendação de CAPTCHA para apps públicos.
+  Rotação de IP ainda permite tentativa distribuída; o teto global não substitui CAPTCHA.
   *Spec:* `identity-and-auth.md` (§3.7, §6, §8).
 - **G5. Abuso de e-mail: orçamento global, caixa de terceiros e reputação do domínio (AU-1,
-  AU-2, OP-4).** O R-ID-3 aceita o risco sem alerta de consumo nem runbook, e ignora que
-  queixas e rejeições podem suspender o domínio de envio, o que derruba o login de todos.
-  *Mitigação:* domínio de envio dedicado (subdomínio) com SPF, DKIM e DMARC; alertas de cota e
-  de taxa de rejeição e queixa no Resend e de `email_sent` no Supabase; runbook de resposta
-  (reduzir limites, ligar CAPTCHA por extensão, rotacionar a credencial SMTP); condicionar a
-  aceitação de R3 a esses itens.
+  AU-2, OP-4).** O teto `email_sent` é global; o núcleo não tem quota por destinatário nem um
+  contador auditável de uso global. Queixas e rejeições também podem suspender o domínio e derrubar
+  o login.
+  *Mitigação:* domínio dedicado com SPF, DKIM e DMARC; conferência operacional do uso do Auth em
+  70%/90%; Sentry em `over_email_send_rate_limit`; revisão do painel Resend nos limiares do
+  runbook; redução de limites e rotação SMTP durante resposta. Bounce/complaint automáticos não
+  são prometidos pelo núcleo. Condicionar R3 a esses itens.
   *Spec:* `identity-and-auth.md` (R-ID-3, §3.7), `ADR 0004` e o how-to de operação.
 - **G6. Exaustão do RevenueCat e do pooler por contas descartáveis (BI-4, PR-4).** Os limites são
   por usuário, e contas são grátis; a falha fechada converte a exaustão em indisponibilidade das

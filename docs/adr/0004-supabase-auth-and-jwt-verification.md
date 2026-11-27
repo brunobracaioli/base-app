@@ -1,7 +1,7 @@
 # ADR 0004 — Supabase Auth e verificação do JWT por JWKS
 
-- **Status:** proposed
-- **Data:** 2026-11-24
+- **Status:** accepted — decisões locais W6 registradas em 2026-11-26; validação hospedada pendente
+- **Data:** 2026-11-24; atualizado em 2026-11-26
 
 ## Contexto
 
@@ -39,14 +39,23 @@ Os e-mails de login precisam sair em três idiomas (pt-BR, en, es), com entrega 
   `config.toml`, com templates por idioma em `supabase/templates/` (o idioma vem de
   `{{ .Data.locale }}`; spike S-AU-1). Só o e-mail de conta excluída sai pela API
   (`EmailSender`).
-- **Pré-sequestro (decidido, spike S-AU-2 na onda 6):** o cadastro com senha não pode deixar uma
-  senha válida num e-mail que o dono ainda não provou ser dele. **Plano B é o padrão**: o app
-  nunca chama `signUp` com senha (cadastra por código e define a senha depois) e um trigger em
-  `auth.users` zera a senha na primeira confirmação do e-mail. O plano A (o Auth já invalida a
-  senha do cadastro não confirmado) só substitui o B se o spike o provar por teste de integração.
-- **OTP:** 8 dígitos, 600 s e 30 verificações por 5 min por IP; plano B de S-AU-4 (10 dígitos,
-  300 s, 10 verificações) se o Auth não invalidar o código por tentativas ou não agrupar o IPv6.
-  O CI confere esses valores no `config.toml` gerado (`pnpm supabase:config:check`, ADR 0014).
+- **Pré-sequestro (S-AU-2, onda 6):** o cadastro com senha não pode deixar uma senha válida num
+  e-mail que o dono ainda não provou ser dele. O plano B foi selecionado: o app cadastra por
+  código e define a senha depois; a migration W6 adiciona um trigger em `auth.users` que apaga
+  uma senha direta na primeira confirmação. O plano A foi rejeitado porque o GoTrue local manteve
+  a senha do cadastro direto depois da confirmação pela vítima.
+- **OTP (S-AU-4, onda 6):** 10 dígitos, 300 s e 10 verificações por 5 min por IP. Dez tentativas
+  erradas não invalidaram o código correto e o agrupamento IPv6 `/64` não foi provado, portanto
+  vale o plano B. O CI exige esses valores exatos no `config.toml` gerado
+  (`pnpm supabase:config:check`, ADR 0014).
+- **Troca de senha (S-AU-3b):** o app sempre envia o `nonce` de `reauthenticate()` e exige login
+  recente. GoTrue 2.198 aceitou `updateUser({ password })` sem `nonce` numa sessão recém-autenticada;
+  `secure_password_change` não é uma barreira contra chamada direta com sessão recente. O risco
+  permanece registrado em R-ID-4.
+- **Avisos de segurança:** GoTrue 2.198 tem configuração para avisos de troca de senha e e-mail,
+  desligados por padrão. O template habilita as duas notificações e oferece conteúdo por idioma.
+  A CLI 3.4.0 validou a configuração e os caminhos locais; entrega localizada ainda depende do
+  teste contra a stack após a reinicialização controlada da Auth.
 - **E-mail como orçamento e como reputação:** `email_sent` de 60 por hora (teto global),
   subdomínio de envio dedicado com SPF, DKIM e DMARC, teto de 300 contas novas por hora (hook
   `before_user_created`), alertas e runbook (identity-and-auth.md §3.7 e §3.8).
@@ -70,8 +79,14 @@ Os e-mails de login precisam sair em três idiomas (pt-BR, en, es), com entrega 
   dispare muitos e-mails para a caixa de um terceiro nem que esgote o orçamento do projeto. Os
   rate limits por IP do Supabase Auth e o CAPTCHA (extensão) reduzem o risco, mas não o
   eliminam. O threat model registra isso como risco residual aceito (R3), condicionado ao teto
-  `email_sent`, ao domínio dedicado, aos alertas e ao runbook; a mitigação completa é o Send
-  Email Hook das versões derivadas.
+  `email_sent`, ao domínio dedicado, à conferência operacional de uso e ao runbook; o Sentry
+  observa `over_email_send_rate_limit`. A mitigação completa por destinatário é o Send Email
+  Hook das versões derivadas.
+- `max_frequency = "60s"` bloqueou reenvio imediato ao mesmo endereço com 429
+  `over_email_send_rate_limit`. As ações de auditoria local registradas foram
+  `user_confirmation_requested`, `user_recovery_requested`,
+  `user_reauthenticate_requested` e `user_modified`; a trilha não oferece contagem global
+  confiável de `email_sent`.
 - Mudanças de configuração do Auth passam por PR (`config.toml`) e são aplicadas com
   `supabase config push`; o painel não é editado à mão.
 - Os e-mails de login dependem de SMTP próprio (Resend) por ambiente.
@@ -139,3 +154,35 @@ Fontes Supabase consultadas: [JWT e JWKS](https://supabase.com/docs/guides/auth/
 [configuração da CLI](https://supabase.com/docs/guides/local-development/cli/config),
 [referência da CLI](https://supabase.com/docs/reference/cli/supabase-config) e
 [changelog de Auth](https://supabase.com/changelog?tags=auth).
+
+## Evidência local W6 (2026-11-26)
+
+As medições foram executadas no stack Supabase descartável `app-base-overnight-verify`, em
+`ci-r3`, com CLI 3.4.0, GoTrue v2.198.0, PostgreSQL 17.12.0.002 e Mailpit. A API e o Mailpit
+foram validados como loopback; todos os usuários e mensagens de fixture foram apagados após os
+spikes. Nenhum projeto hospedado foi consultado ou alterado. A matriz detalhada está em
+[`docs/plan/wave-6-auth-spikes.md`](../plan/wave-6-auth-spikes.md).
+
+- S-AU-1 provou a seleção de ramo com marcadores para cinco tipos e fallback pt-BR para locale
+  ausente, desconhecido ou de tipo inesperado. Uma regressão de conteúdo deixou o ramo EN vazio
+  após um refactor; foi corrigida. O teste real EN verificou assunto, corpo, OTP, expiração e aviso
+  de não compartilhamento; S-AU-3a verificou esses itens nos dois códigos de troca em PT/EN/ES.
+- S-AU-2 provou que `verifyOtp({ type: 'signup' })` aceita cadastro direto, a senha do atacante
+  permanece válida após a confirmação da vítima e cadastro somente por OTP aceita
+  `verifyOtp({ type: 'email' })`. O plano B foi selecionado.
+- S-AU-3a aceitou `email_change` nas duas caixas; a primeira confirmação manteve o e-mail antigo e
+  a segunda alterou o endereço ativo. O aviso localizado chegou à caixa antiga e passou os checks
+  de assunto e corpo em PT/EN/ES.
+- S-AU-3b aceitou troca com e sem `nonce` numa sessão recém-autenticada. A ausência inicial do
+  aviso de senha ocorreu com a notificação desabilitada na configuração do fixture; não foi
+  evidência de que a versão não oferece o recurso. Após habilitar a configuração, os avisos de
+  senha foram entregues e validados em PT/EN/ES.
+- S-AU-4 aceitou o código correto após dez OTPs errados, não provou agrupamento IPv6 `/64`,
+  bloqueou reenvio dentro de 60 s e identificou as ações de auditoria acima.
+- A migration `identity.clear_unverified_password()` foi aplicada somente ao stack local
+  descartável. O pgTAP local passou 14 arquivos/294 assertions, incluindo 6 assertions W6; o
+  fluxo de pré-sequestro rejeitou a senha direta antes e depois da confirmação legítima, e aceitou
+  cadastro OTP-only seguido de criação de senha e sign-in.
+
+Referências de notificação: [guia local de templates do Supabase](https://supabase.com/docs/guides/local-development/customizing-email-templates)
+e [configuração de Auth do GoTrue v2.198.0](https://github.com/supabase/auth/blob/v2.198.0/internal/conf/configuration.go).

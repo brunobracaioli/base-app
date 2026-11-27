@@ -10,7 +10,7 @@ export default function ExtensionLayout() {
     !boot.updateRequired &&
     !boot.maintenance &&
     session !== null &&
-    boot.termsAccepted &&
+    (boot.termsAccepted || boot.offline) &&
     (boot.extensionBlock === null || boot.extensionBlock.href.startsWith('/(ext)/'));
 
   return canUseExtensions ? <Slot /> : <Redirect href="/+not-found" />;

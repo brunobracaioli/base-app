@@ -322,7 +322,6 @@ describe('extension facade', () => {
   it.each([
     ['signInAnonymously', 'anonymous'],
     ['signInWithIdToken', 'social'],
-    ['linkIdentity', 'social'],
   ] as const)('%s obtains its CAPTCHA token through withCaptcha', async (methodName, action) => {
     const ports = createPorts();
     const provider: CaptchaProvider = {
@@ -348,12 +347,31 @@ describe('extension facade', () => {
         { provider: 'oidc', token: 'identity-token' },
         'captcha-secret',
       );
-    } else {
-      await api.extensionAuth.linkIdentity({ provider: 'oidc' });
-      expect(ports.auth.linkIdentity).toHaveBeenCalledWith({ provider: 'oidc' }, 'captcha-secret');
     }
 
     expect(provider.getToken).toHaveBeenCalledWith(action);
+  });
+
+  it('does not request an unsupported CAPTCHA token for OAuth identity linking', async () => {
+    const ports = createPorts();
+    const provider: CaptchaProvider = {
+      kind: 'test',
+      prewarm: jest.fn(),
+      getToken: jest.fn().mockResolvedValue({ token: 'captcha-secret', issuedAt: 1 }),
+      release: jest.fn(),
+      dispose: jest.fn(),
+    };
+    const api = createExtensionApi({
+      auth: ports.auth,
+      session: ports.session,
+      apiClient: {} as ApiClient,
+      captchaProvider: provider,
+    });
+
+    await api.extensionAuth.linkIdentity({ provider: 'oidc' });
+
+    expect(ports.auth.linkIdentity).toHaveBeenCalledWith({ provider: 'oidc' }, undefined);
+    expect(provider.getToken).not.toHaveBeenCalled();
   });
 
   it('releases CAPTCHA tokens on auth failures and does not call auth when CAPTCHA fails', async () => {

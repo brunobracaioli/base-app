@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const coreAuthFunctionPolicies = new Map([
   ['identity.before_user_created(jsonb)', { executeCallers: ['supabase_auth_admin'] as const }],
+  ['identity.clear_unverified_password()', { executeCallers: ['supabase_auth_admin'] as const }],
   ['identity.count_unconfirmed_users()', { executeCallers: ['ops'] as const }],
   ['identity.delete_unconfirmed_users()', { executeCallers: ['ops'] as const }],
   ['identity.read_fresh_roles(uuid)', { executeCallers: ['authenticated'] as const }],

@@ -17,6 +17,7 @@ import {
 const migrationName = '20261124120000_ext-x_guard.sql';
 const coreAuthMigrationName = '20261125120000_core_auth_helpers.sql';
 const w4CoreAuthMigrationName = '20261125210517_w4_identity_profile_consents_fresh_roles.sql';
+const w6AuthMigrationName = '20261127015300_w6_email_auth_safety.sql';
 
 const coreAuthFunctions = [
   {
@@ -27,6 +28,15 @@ const coreAuthFunctions = [
     owner: 'postgres',
     executeCallers: ['supabase_auth_admin'],
     purpose: 'Enforces the fixed signup ceiling before Auth creates a user.',
+  },
+  {
+    schema: 'identity',
+    name: 'clear_unverified_password',
+    signature: '()',
+    migration: w6AuthMigrationName,
+    owner: 'postgres',
+    executeCallers: ['supabase_auth_admin'],
+    purpose: 'Clears passwords set before email ownership is proven on first confirmation.',
   },
   {
     schema: 'identity',
@@ -76,9 +86,16 @@ const w4CoreAuthMigration = `
   ALTER FUNCTION identity.read_fresh_roles(uuid) OWNER TO postgres;
 `;
 
+const w6AuthMigration = `
+  CREATE FUNCTION identity.clear_unverified_password() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$ BEGIN RETURN NULL; END; $$;
+  ALTER FUNCTION identity.clear_unverified_password() OWNER TO postgres;
+`;
+
 const coreAuthMigrations = [
   { name: coreAuthMigrationName, contents: coreAuthMigration },
   { name: w4CoreAuthMigrationName, contents: w4CoreAuthMigration },
+  { name: w6AuthMigrationName, contents: w6AuthMigration },
 ];
 
 function lint(contents: string, options: Parameters<typeof lintExtensionMigration>[1] = {}) {
@@ -443,7 +460,10 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(
       (
         await lintCoreAuthFunctionMigrations(
-          [{ name: coreAuthMigrationName, contents: unregisteredTransfer }, coreAuthMigrations[1]!],
+          [
+            { name: coreAuthMigrationName, contents: unregisteredTransfer },
+            ...coreAuthMigrations.slice(1),
+          ],
           registrations,
         )
       ).some((issue) => issue.code === 'unregistered-postgres-function-owner'),
@@ -458,7 +478,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
         await lintCoreAuthFunctionMigrations(
           [
             { name: coreAuthMigrationName, contents: migrationOwnedFunctions },
-            coreAuthMigrations[1]!,
+            ...coreAuthMigrations.slice(1),
           ],
           registrations,
         )
@@ -472,7 +492,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(
       (
         await lintCoreAuthFunctionMigrations(
-          [{ name: coreAuthMigrationName, contents: wrongOwner }, coreAuthMigrations[1]!],
+          [{ name: coreAuthMigrationName, contents: wrongOwner }, ...coreAuthMigrations.slice(1)],
           registrations,
         )
       ).some((issue) => issue.code === 'core-auth-function-owner'),
@@ -483,7 +503,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
         await lintCoreAuthFunctionMigrations(
           [
             { name: '20261125120001_other.sql', contents: coreAuthMigration },
-            coreAuthMigrations[1]!,
+            ...coreAuthMigrations.slice(1),
           ],
           registrations,
         )
@@ -497,7 +517,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(
       (
         await lintCoreAuthFunctionMigrations(
-          [{ name: coreAuthMigrationName, contents: unsafePath }, coreAuthMigrations[1]!],
+          [{ name: coreAuthMigrationName, contents: unsafePath }, ...coreAuthMigrations.slice(1)],
           registrations,
         )
       ).some((issue) => issue.code === 'function-search-path'),
@@ -513,7 +533,10 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     expect(
       (
         await lintCoreAuthFunctionMigrations(
-          [{ name: coreAuthMigrationName, contents: wrongSignature }, coreAuthMigrations[1]!],
+          [
+            { name: coreAuthMigrationName, contents: wrongSignature },
+            ...coreAuthMigrations.slice(1),
+          ],
           registrations,
         )
       ).some((issue) => issue.code === 'unregistered-postgres-function-owner'),
@@ -528,7 +551,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
           name: coreAuthMigrationName,
           contents: 'CREATE ROLE auth_fn_owner NOLOGIN;',
         },
-        coreAuthMigrations[1]!,
+        ...coreAuthMigrations.slice(1),
       ],
       registrations,
     );
@@ -543,7 +566,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
             LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $$ SELECT 1 $$;
           `,
         },
-        coreAuthMigrations[1]!,
+        ...coreAuthMigrations.slice(1),
       ],
       registrations,
     );
@@ -566,6 +589,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     );
     writeFileSync(join(migrationDirectory, coreAuthMigrationName), coreAuthMigration, 'utf8');
     writeFileSync(join(migrationDirectory, w4CoreAuthMigrationName), w4CoreAuthMigration, 'utf8');
+    writeFileSync(join(migrationDirectory, w6AuthMigrationName), w6AuthMigration, 'utf8');
     writeFileSync(
       join(migrationDirectory, '20261125120001_ext-x_owner.sql'),
       `
@@ -579,7 +603,7 @@ describe('PostgreSQL AST policy for extension migrations', () => {
     try {
       const result = await lintExtensionMigrations(root);
       expect(result.checked).toBe(1);
-      expect(result.coreChecked).toBe(2);
+      expect(result.coreChecked).toBe(3);
       expect(
         result.issues.some(
           (entry) =>

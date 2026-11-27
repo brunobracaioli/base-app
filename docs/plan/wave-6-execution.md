@@ -6,15 +6,23 @@ Branch `feat/w6-email-auth`, base com W5 concluída. Worktree persistente em
 `.worktrees/w6` após reinício que limpou `/tmp`; código do spike foi recuperado da
 KVM. O dono autorizou execução contínua das ondas restantes, sem push/deploy.
 
-Spikes locais em GoTrue v2.198.0 e Mailpit: ramos de corpo/assunto funcionam nos
-cinco tipos e três idiomas, com fallback seguro para locale inválida. Cadastro
-com senha mantém a senha após confirmação: Plano B obrigatório. O papel postgres
-sem superusuário pode instalar o trigger de Auth (prova transacional revertida).
-Troca de e-mail confirma as duas caixas. Sessão recente pode dispensar nonce de
-senha: o app exige login recente e envia o nonce quando solicitado. Notificação
-nativa de troca de senha não foi observada. Dez tentativas erradas não invalidam
-o código correto; IPv6 /64 não foi comprovado: OTP 10/300/10, sem relaxar controles.
-Resultados detalhados são registrados em identity-and-auth §8 e ADR 0004.
+Spikes locais em GoTrue v2.198.0 e Mailpit: ramos de corpo/assunto funcionaram nos
+cinco tipos e três idiomas, com fallback seguro para locale inválida. O teste de
+cópia encontrou e corrigiu um corpo EN vazio; OTP, prazo e aviso de não
+compartilhamento passaram em EN reauth e nos seis códigos de troca de e-mail
+PT/EN/ES. Cadastro com senha mantém a senha após confirmação: Plano B selecionado.
+O manager aplicou a migration e pgTAP passou em 14 arquivos/294 assertions,
+incluindo as seis assertions W6. O teste pré-sequestro local rejeitou o sign-in do
+atacante antes (`email_not_confirmed`) e depois (`invalid_credentials`) da
+confirmação da vítima; OTP-only criou senha depois e conseguiu entrar.
+
+Troca de e-mail confirmou as duas caixas e os avisos localizados chegaram ao
+endereço antigo em PT/EN/ES. Sessão recente aceita mudança de senha sem `nonce`:
+o app sempre exige `reauthenticate()` e envia o nonce, mas chamada direta ao Auth
+permanece risco R-ID-4. Avisos localizados de senha chegaram em PT/EN/ES. Dez erros
+não invalidaram o código correto e IPv6 `/64` não foi comprovado: OTP 10/300/10,
+sem relaxar controles. Resultados detalhados estão em identity-and-auth §8, ADR
+0004 e [`wave-6-auth-spikes.md`](wave-6-auth-spikes.md).
 
 ## Plano e provas de aceite
 

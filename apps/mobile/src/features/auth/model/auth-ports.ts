@@ -45,6 +45,7 @@ export interface SessionPort {
   getCurrentAccessToken(): Promise<string | null>;
   getSessionSummary(): SessionSummary | null;
   subscribe(listener: () => void): () => void;
+  revalidate?(): Promise<Result<void, AuthErrorKey>>;
   signOutLocal(): Promise<void>;
   capturePreviousSession(): Promise<CapturedPreviousSessionPort | null>;
 }

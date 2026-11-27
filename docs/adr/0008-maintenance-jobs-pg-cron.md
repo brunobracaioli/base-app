@@ -37,8 +37,9 @@ linhas de uma tabela.
   (4) volume por `actor_type` na hora (`operator` > 50, `system` > 1 000,
   `webhook` > 2 000); (5) `app_config.updated` por `operator` em chave fora de
   `operator_alert_exempt_keys` (mitigação parcial de R27).
-  O sinal de e-mail em 70%/90% de `email_sent` só entra após S-AU-4 identificar
-  os eventos que representam envio. Não se inventa esse mapeamento na W2.
+  O spike S-AU-4 identificou ações Auth por fluxo, mas não um contador global confiável de
+  `email_sent`; o sinal automático em 70%/90% continua fora da W2. A medição do orçamento fica
+  no projeto Supabase e a conferência operacional está no runbook `email-abuse-response`.
 - **Operação do derivado.** Até existir um monitor externo especificado, o operador
   consulta `ops.alerts` e o sinal de vida do expurgo pelo runbook. Persistir um
   sinal não comprova notificação nem entrega de e-mail. Se `pg_cron` morrer, a

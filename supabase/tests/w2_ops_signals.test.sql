@@ -1,13 +1,37 @@
 begin;
+set transaction isolation level repeatable read;
 set local search_path = test_support, extensions, public;
 select no_plan();
 
--- Isolate the alert fixture and hold the relation lock until rollback so a
--- concurrent cron run cannot change this test's timestamps mid-assertion.
+-- Take source locks before ops.alerts, matching the signal query's read-then-
+-- write order. Do not lock cron.job_run_details: a cron worker may record its
+-- run after executing a signal function that is waiting on audit.events.
+lock table auth.users in share row exclusive mode;
+lock table audit.events in access exclusive mode;
+truncate table audit.events;
+lock table app_config.operator_alert_exempt_keys in share row exclusive mode;
+delete from app_config.operator_alert_exempt_keys
+where key in ('maintenance', 'legal');
+lock table ops.alerts in access exclusive mode;
 truncate table ops.alerts;
+
+create temporary table expected_cron_failures on commit drop as
+select count(*)::numeric + 1 as value
+from cron.job_run_details
+where status = 'failed'
+  and start_time >= transaction_timestamp() - interval '24 hours';
 
 insert into cron.job_run_details (username, status, start_time)
 values ('ops', 'failed', clock_timestamp());
+
+-- A stale heartbeat is retained in the fixture so the 36-hour cutoff is
+-- covered even when this test runs after earlier pg_cron executions.
+insert into audit.events (id, occurred_at, actor_type, actor_ref, action, resource_type,
+                          outcome, correlation_id, metadata)
+values ('70000000-0000-4000-8000-000000000001',
+        clock_timestamp() - interval '37 hours', 'system', 'script:pgtap:signals',
+        'ops.purge_expired', 'ops.cron', 'success',
+        '70000000-0000-4000-8000-000000000002', '{}');
 
 insert into audit.events (id, occurred_at, actor_type, actor_ref, action, resource_type,
                           resource_ref, outcome, correlation_id, metadata)
@@ -62,7 +86,8 @@ select set_eq(
   $$,
   'the active maintenance signals include failure, retention, audit volume, and unlisted operator changes'
 );
-select is((select value from ops.alerts where code = 'cron_failures_24h'), 1::numeric,
+select is((select value from ops.alerts where code = 'cron_failures_24h'),
+  (select value from expected_cron_failures),
   'cron failures are counted in the alert');
 select is((select value from ops.alerts where code = 'purge_expired_missing'), 1::numeric,
   'a missing purge heartbeat raises an alert');

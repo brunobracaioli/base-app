@@ -136,6 +136,10 @@ export function setActiveMobileI18n(instance: ReturnType<typeof createMobileI18n
   activeI18n = instance;
 }
 
+export function getActiveLocale(): Locale {
+  return resolveLocale(activeI18n.resolvedLanguage ?? activeI18n.language, undefined);
+}
+
 export function translateMobile(key: string, options?: Readonly<Record<string, string>>): string {
   if (key.startsWith('errors.')) {
     const requestedErrorKey = key.slice('errors.'.length);

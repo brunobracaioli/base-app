@@ -1,6 +1,13 @@
 begin;
+set transaction isolation level repeatable read;
 set local search_path = test_support, extensions, public;
 select no_plan();
+
+-- The purge locks Auth rows before writing its audit event. Preserve that
+-- order, then isolate count-only audit assertions until this file rolls back.
+lock table auth.users in share row exclusive mode;
+lock table audit.events in access exclusive mode;
+truncate table audit.events;
 
 insert into auth.users (id, instance_id, aud, role, email, email_confirmed_at,
                         is_anonymous, created_at, updated_at)

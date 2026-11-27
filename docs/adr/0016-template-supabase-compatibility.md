@@ -25,23 +25,28 @@ Manter Data API desligada, papéis por contexto, `api_runtime` sem herança,
 RLS forçado nas tabelas da aplicação, TLS, auditoria e validação. Substituir
 somente as partes incompatíveis abaixo.
 
-| Operação W2 | Proprietário | Chamador permitido |
+| Operação protegida do núcleo | Proprietário | Chamador permitido |
 | --- | --- | --- |
 | `identity.before_user_created(jsonb)` | `postgres` | `supabase_auth_admin` |
+| `identity.clear_unverified_password()` (trigger W6 de primeira confirmação) | `postgres` | `supabase_auth_admin` pelo trigger de `auth.users` |
 | `identity.count_unconfirmed_users()` | `postgres` | `ops` |
 | `identity.delete_unconfirmed_users()` (máximo de 500 contas por chamada) | `postgres` | `ops` |
 | `ops.purge_unconfirmed_users()` e `ops.check_signals()` | `ops` | `postgres`/agendador |
 | `ops.app_config_change_count_last_hour()` (contagem escalar de `app_config.updated` na última hora) | `ops` | `app_config_admin` |
 
-As três funções Auth têm SQL fixo, relações qualificadas, `search_path` vazio,
+As funções Auth registradas têm SQL fixo, relações qualificadas, `search_path` vazio,
 owner `postgres` e EXECUTE revogado de `PUBLIC` e dos demais papéis. O registry
 `supabase/tests/core-auth-fn-registry.json` vincula schema, nome, assinatura,
 migration definidora, owner, chamadores e propósito; pgTAP confere também ACLs
-negativas. O registry é fechado às três funções W2: extensões não podem criar,
-transferir ou registrar funções que toquem em `auth`. Funções de privacidade e
-limpeza de senha continuam nas ondas próprias; a onda correspondente adiciona
-suas entradas exatas ao registry fechado com a revisão de ameaça e os testes da
-spec, sem autorização genérica para extensões.
+negativas. O registry é fechado às funções Auth registradas do núcleo: extensões
+não podem criar, transferir ou registrar funções que toquem em `auth`. O trigger
+W6 que remove uma senha anterior à primeira confirmação pertence a `postgres`,
+usa `SECURITY DEFINER` e `search_path = ''`, atualiza somente a conta da linha do
+trigger e concede `EXECUTE` exclusivamente a `supabase_auth_admin`. O pgTAP
+confere owner, ACL, associação ao trigger e preservação de senhas de contas já
+confirmadas. Funções adicionais de privacidade continuam a exigir uma entrada
+exata no registry, revisão de ameaça e testes próprios; não há autorização
+genérica para extensões.
 
 O wrapper `ops` grava a contagem de purga com seu grant de auditoria já
 existente. `app_config_admin` recebe somente a função escalar de contagem,

@@ -13,7 +13,7 @@ Receitas para tarefas específicas. Cada uma assume que você já passou pelos
 | Adicionar uma rota com `defineRoute` | Contrato em `packages/contracts`, rota fina, caso de uso e testes | [ADR 0003](../adr/0003-backend-nextjs-modular-monolith-on-vercel.md), [ADR 0007](../adr/0007-contracts-zod-first-generated-openapi.md) |
 | Adicionar um idioma | Novo locale em `product.config.ts` e nos arquivos de i18n, com checagem de chaves | [mobile-app-shell](../specs/mobile-app-shell.md) |
 | Aplicar as proteções do GitHub (`github-protections`) | Environments com revisores, rulesets de `main` e de tags, secret scanning, `CODEOWNERS`; rodar `pnpm security:doctor` | [ADR 0012](../adr/0012-ci-cd-and-release.md) |
-| Responder a abuso de e-mail (`email-abuse-response`) | Teto `email_sent`, SPF, DKIM e DMARC, reputação do Resend, alertas, reduzir limites, rotacionar o SMTP | [identity-and-auth](../specs/identity-and-auth.md) |
+| Responder a abuso de e-mail (`email-abuse-response`) | Teto `email_sent`, SPF, DKIM e DMARC, reputação do Resend, alertas, reduzir limites, rotacionar o SMTP | [email-abuse-response](email-abuse-response.md), [identity-and-auth](../specs/identity-and-auth.md) |
 | Controlar custo e abuso (`cost-guardrails`) | Vercel Firewall, Spend Management, tetos e alertas na Vercel, Upstash, Resend e Supabase | [base-app §3.13](../specs/base-app.md) |
 | Rotacionar a chave de assinatura OTA (`rotate-ota-signing-key`) | Troca, perda ou exposição da chave; build novo e `minSupported` | [mobile-app-shell](../specs/mobile-app-shell.md) |
 | Publicar o repositório (`publish-repository`) | Varredura do histórico, `SECURITY.md`, relato privado, tags assinadas | [ADR 0012](../adr/0012-ci-cd-and-release.md) |

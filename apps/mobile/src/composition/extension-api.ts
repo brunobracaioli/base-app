@@ -234,8 +234,7 @@ export function createExtensionApi(dependencies: ExtensionApiDependencies): Exte
         withCaptcha(captchaProvider, 'anonymous', (token) => auth.signInAnonymously(token)),
       signInWithIdToken: (input) =>
         withCaptcha(captchaProvider, 'social', (token) => auth.signInWithIdToken(input, token)),
-      linkIdentity: (input) =>
-        withCaptcha(captchaProvider, 'social', (token) => auth.linkIdentity(input, token)),
+      linkIdentity: (input) => auth.linkIdentity(input, undefined),
       unlinkIdentity: (input) => auth.unlinkIdentity(input),
       updateEmail: (email) => auth.updateEmail(email),
       verifyEmailChangeOtp: (input) => auth.verifyEmailChangeOtp(input),

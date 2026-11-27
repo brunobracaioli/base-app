@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import React, { type PropsWithChildren } from 'react';
 import { AppState } from 'react-native';
 
+import product from '@base-app/config/product.config';
 import type {
   AppConfigResponseValue,
   ConsentBodyInput,
@@ -34,6 +35,7 @@ import {
   AccountProfileScreen,
   ChangeEmailScreen,
   ChangePasswordScreen,
+  EmailCodeStartScreen,
   EmailCodeScreen,
   PasswordSetupScreen,
   PasswordSignInScreen,
@@ -90,6 +92,7 @@ type RouterMock = {
 const router = (jest.requireMock('expo-router') as { readonly __router: RouterMock }).__router;
 const testUserId = '5fa6acc4-75aa-4e60-8129-3db379c1c804';
 const testNow = Date.parse('2026-11-26T12:00:00.000Z');
+const configuredAuthMethods = [...product.auth.methods];
 
 type FixtureOptions = {
   readonly authenticated?: boolean;
@@ -392,6 +395,7 @@ function TermsHarness({ fixture }: { readonly fixture: Fixture }) {
 }
 
 beforeEach(() => {
+  product.auth.methods = [...configuredAuthMethods];
   router.push.mockClear();
   router.replace.mockClear();
   router.back.mockClear();
@@ -401,12 +405,31 @@ beforeEach(() => {
     .mockReturnValue({ remove: jest.fn() } as ReturnType<typeof AppState.addEventListener>);
 });
 
+afterEach(() => {
+  product.auth.methods = [...configuredAuthMethods];
+});
+
 describe('authentication screens', () => {
-  it('keeps the terms retry route available offline while profile state is unknown', async () => {
+  it('keeps a saved session on product routes offline while terms state is unknown', async () => {
     const fixture = createFixture({ authenticated: true, failMe: true });
     await fixture.controller.refreshMe();
     const view = await render(
       <RuntimeHarness fixture={fixture} bootOffline>
+        <GateLayout />
+        <AppLayout />
+      </RuntimeHarness>,
+    );
+    expect(screen.queryByTestId('route.terms')).toBeNull();
+    expect(screen.getByTestId('route.(tabs)')).toBeTruthy();
+    await view.unmount();
+    fixture.dispose();
+  });
+
+  it('keeps product routes blocked and terms retry reachable after an online profile failure', async () => {
+    const fixture = createFixture({ authenticated: true, failMe: true });
+    await fixture.controller.refreshMe();
+    const view = await render(
+      <RuntimeHarness fixture={fixture}>
         <GateLayout />
         <AppLayout />
       </RuntimeHarness>,
@@ -451,6 +474,42 @@ describe('authentication screens', () => {
     expect(screen.getByTestId('route.new-password')).toBeTruthy();
     expect(screen.queryByTestId('route.terms')).toBeNull();
     expect(screen.queryByTestId('route.(tabs)')).toBeNull();
+    await view.unmount();
+    fixture.dispose();
+  });
+
+  it('keeps OTP sign-in usable and hides password account creation when password auth is disabled', async () => {
+    product.auth.methods = ['email_otp'];
+    const fixture = createFixture();
+    const view = await render(
+      <RuntimeHarness fixture={fixture}>
+        <EmailCodeStartScreen />
+      </RuntimeHarness>,
+    );
+
+    expect(screen.queryByTestId('auth.sign-up-link')).toBeNull();
+    await fireEvent.changeText(screen.getByTestId('auth.email'), 'person@example.test');
+    await fireEvent.press(screen.getByTestId('auth.submit'));
+
+    expect(fixture.authCalls.emailCodes).toEqual([
+      { email: 'person@example.test', locale: 'en', purpose: 'sign_in' },
+    ]);
+    expect(router.push).toHaveBeenCalledWith('/(auth)/code');
+    await view.unmount();
+    fixture.dispose();
+  });
+
+  it('keeps password account creation available from OTP sign-in when both auth methods are enabled', async () => {
+    const fixture = createFixture();
+    const view = await render(
+      <RuntimeHarness fixture={fixture}>
+        <EmailCodeStartScreen />
+      </RuntimeHarness>,
+    );
+
+    expect(screen.getByTestId('auth.sign-up-link')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('auth.sign-up-link'));
+    expect(router.push).toHaveBeenCalledWith('/(auth)/sign-up');
     await view.unmount();
     fixture.dispose();
   });

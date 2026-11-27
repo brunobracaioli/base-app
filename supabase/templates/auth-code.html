@@ -1,0 +1,38 @@
+<!doctype html>
+{{ if eq (printf "%T" .Data.locale) "string" }} {{ if eq .Data.locale "en" }}
+<html lang="en">
+  <body>
+    <h1>Your sign-in code</h1>
+    <p>Use this code to verify your account. It expires in 5 minutes. Do not share it.</p>
+    <p><strong>{{ .Token }}</strong></p>
+    <p>If you did not request this code, you can ignore this email.</p>
+  </body>
+</html>
+{{ else if eq .Data.locale "es" }}
+<html lang="es">
+  <body>
+    <h1>Tu código de acceso</h1>
+    <p>Usa este código para verificar tu cuenta. Caduca en 5 minutos. No lo compartas.</p>
+    <p><strong>{{ .Token }}</strong></p>
+    <p>Si no solicitaste este código, puedes ignorar este correo.</p>
+  </body>
+</html>
+{{ else }}
+<html lang="pt-BR">
+  <body>
+    <h1>Seu código de acesso</h1>
+    <p>Use este código para confirmar sua conta. Ele expira em 5 minutos. Não compartilhe.</p>
+    <p><strong>{{ .Token }}</strong></p>
+    <p>Se você não pediu este código, pode ignorar este e-mail.</p>
+  </body>
+</html>
+{{ end }} {{ else }}
+<html lang="pt-BR">
+  <body>
+    <h1>Seu código de acesso</h1>
+    <p>Use este código para confirmar sua conta. Ele expira em 5 minutos. Não compartilhe.</p>
+    <p><strong>{{ .Token }}</strong></p>
+    <p>Se você não pediu este código, pode ignorar este e-mail.</p>
+  </body>
+</html>
+{{ end }}

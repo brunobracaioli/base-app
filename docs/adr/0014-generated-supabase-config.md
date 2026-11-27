@@ -34,7 +34,7 @@ a lista de arquivos permitidos") quebra.
 - **Invariantes de segurança (G32).** `pnpm supabase:config:check` roda sobre o `config.toml`
   gerado, no CI do núcleo e no de toda versão derivada (tabela em identity-and-auth.md §3.7:
   `api.enabled = false`, `jwt_expiry ≤ 900`, `secure_password_change`, `double_confirm_changes`,
-  OTP de 8 dígitos e ≤ 600 s, limites por IP e `email_sent` não maiores que os do núcleo, SMTP
+  OTP de 10 dígitos e 300 s, limite de 10 verificações por IP e `email_sent` não maior que o do núcleo, SMTP
   por `env()`, superfícies desligadas). Um fragmento que sobrescreva chave protegida sem o
   marcador `# allow-override: <chave> <motivo>` faz o gerador falhar; com o marcador, a exceção
   aparece no cabeçalho e o teste a aceita só se o valor continuar dentro da regra.

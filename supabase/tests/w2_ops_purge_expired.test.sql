@@ -1,6 +1,17 @@
 begin;
+set transaction isolation level repeatable read;
 set local search_path = test_support, extensions, public;
 select no_plan();
+
+-- Keep the test-local account, audit, and idempotency fixtures isolated from
+-- maintenance jobs. The lock order follows the routines that touch both
+-- Auth and audit; transactional truncation restores the existing history at
+-- rollback.
+lock table auth.users in share row exclusive mode;
+lock table audit.events in access exclusive mode;
+truncate table audit.events;
+lock table platform.idempotency_keys in share row exclusive mode;
+
 select ok(has_function_privilege('postgres', 'ops.purge_expired()', 'EXECUTE')
   and has_function_privilege('postgres', 'ops.check_signals()', 'EXECUTE'),
   'the cron executor retains explicit execution after ownership transfer');

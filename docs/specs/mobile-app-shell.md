@@ -80,6 +80,10 @@ flowchart TD
   guardada não bloqueia, conforme app-config AC-07.
 - Sessão guardada e sem rede: entra em `(app)` em modo offline; os termos são reavaliados quando
   `GET /v1/me` voltar a responder.
+- Se o access token guardado expirou, uma falha temporária de rede na renovação
+  não apaga a sessão cifrada. O modo offline usa somente o resumo da sessão;
+  nenhuma chamada protegida recebe o token expirado. Na reconexão, a sessão é
+  revalidada antes de `GET /v1/me`, inclusive quando o UUID continua igual.
 - Sessão guardada mas refresh token revogado: o primeiro 401 que não se resolve com renovação leva
   a Boas-vindas com "sua sessão expirou".
 - `evaluateGate` (app-config.md) é quem decide os passos 1 e 2.
