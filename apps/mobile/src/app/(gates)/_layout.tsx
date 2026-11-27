@@ -16,9 +16,7 @@ export default function GateLayout() {
       <Stack.Protected guard={!boot.updateRequired && boot.maintenance}>
         <Stack.Screen name="maintenance" />
       </Stack.Protected>
-      <Stack.Protected
-        guard={baseAllowsGate && session !== null && !boot.termsAccepted && !boot.offline}
-      >
+      <Stack.Protected guard={baseAllowsGate && session !== null && !boot.termsAccepted}>
         <Stack.Screen name="terms" />
       </Stack.Protected>
       <Stack.Protected

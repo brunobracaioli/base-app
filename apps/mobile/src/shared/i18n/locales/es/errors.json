@@ -5,7 +5,20 @@
   "auth": {
     "token_expired": "Tu sesión ha caducado.",
     "recent_auth_required": "Inicia sesión de nuevo para continuar.",
-    "account_deleted": "Esta cuenta ya no está disponible."
+    "account_deleted": "Esta cuenta ya no está disponible.",
+    "failed": "No se pudo completar esta acción. Revisa los datos e inténtalo de nuevo.",
+    "unavailable": "La autenticación no está disponible temporalmente. Inténtalo de nuevo.",
+    "session_expired": "Tu sesión ha caducado.",
+    "session_missing": "Inicia sesión de nuevo para continuar.",
+    "invalid_credentials": "No pudimos iniciar sesión con esos datos. Revísalos e inténtalo de nuevo.",
+    "email_not_confirmed": "No pudimos iniciar sesión con esos datos. Revísalos e inténtalo de nuevo.",
+    "otp_expired": "El código caducó o no es válido. Solicita otro código e inténtalo de nuevo.",
+    "weak_password": "La contraseña no cumple los requisitos de seguridad.",
+    "same_password": "Elige una contraseña distinta de la actual.",
+    "over_email_send_rate_limit": "No pudimos enviar ahora. Espera un minuto e inténtalo de nuevo.",
+    "email_address_invalid": "Escribe una dirección de correo válida.",
+    "user_already_exists": "Si la dirección es correcta, recibirás las instrucciones por correo.",
+    "reauthentication_failed": "No pudimos confirmar tu identidad. Inténtalo de nuevo."
   },
   "client": {
     "contract_mismatch": "La aplicación recibió una respuesta inesperada."

@@ -1,0 +1,14 @@
+appId: ${APP_ID}
+---
+- evalScript: ${output.authEmail = MAESTRO_AUTH_EMAIL}
+- launchApp:
+    clearState: true
+- tapOn:
+    id: auth.welcome.email-code
+- tapOn:
+    id: auth.email
+- inputText: ${output.authEmail}
+- tapOn:
+    id: auth.submit
+- assertVisible:
+    id: auth.otp

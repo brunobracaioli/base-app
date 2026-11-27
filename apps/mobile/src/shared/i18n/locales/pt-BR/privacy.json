@@ -2,5 +2,19 @@
   "title": "Privacidade",
   "exportData": "Exportar dados",
   "deleteAccount": "Excluir conta",
-  "notConfigured": "Esta ação ainda não foi configurada."
+  "notConfigured": "Esta ação ainda não foi configurada.",
+  "termsConsent": "Aceito os termos de uso (versão {{version}}).",
+  "privacyConsent": "Aceito o aviso de privacidade (versão {{version}}).",
+  "openTerms": "Ler termos de uso",
+  "openPrivacy": "Ler aviso de privacidade",
+  "acceptDocuments": "Aceitar e continuar",
+  "consentPartialFailure": "Parte das escolhas foi salva. Tente novamente para concluir; repetir uma escolha salva não cria um registro duplicado.",
+  "consentRequired": "Aceite os dois documentos para continuar.",
+  "consentSaved": "Escolhas registradas.",
+  "termsTitle": "Termos e aviso de privacidade",
+  "termsDescription": "Leia os documentos e aceite as versões atuais para continuar.",
+  "linkUnavailable": "Não foi possível abrir este documento. Tente novamente.",
+  "consentSaveFailed": "Não foi possível registrar suas escolhas. Tente novamente.",
+  "consentRefreshFailure": "Suas escolhas podem ter sido registradas. Tente novamente para confirmar; repetir uma escolha não cria um registro duplicado.",
+  "consentOffline": "Conecte-se à internet para registrar seu aceite."
 }

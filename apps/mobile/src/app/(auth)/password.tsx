@@ -1,7 +1,7 @@
 import React from 'react';
 
-import { AuthReservedScreen } from '../../features/shell/ui/screens';
+import { PasswordSignInScreen } from '../../features/auth/ui/auth-screens';
 
 export default function PasswordRoute() {
-  return <AuthReservedScreen titleKey="passwordScreenTitle" />;
+  return <PasswordSignInScreen />;
 }

@@ -1,0 +1,14 @@
+appId: ${APP_ID}
+---
+- evalScript: ${output.authOtp = MAESTRO_AUTH_OTP}
+- assertVisible:
+    id: auth.otp
+- tapOn:
+    id: auth.otp
+- inputText: ${output.authOtp}
+- tapOn:
+    id: auth.submit
+- runFlow:
+    file: accept-current-terms.yaml
+- assertVisible:
+    id: app.home

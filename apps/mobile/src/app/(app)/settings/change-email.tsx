@@ -1,7 +1,7 @@
 import React from 'react';
 
-import { AuthReservedScreen } from '../../../features/shell/ui/screens';
+import { ChangeEmailScreen } from '../../../features/auth/ui/auth-screens';
 
 export default function ChangeEmailRoute() {
-  return <AuthReservedScreen titleKey="emailScreenTitle" />;
+  return <ChangeEmailScreen />;
 }

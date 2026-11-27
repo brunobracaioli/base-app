@@ -2,5 +2,19 @@
   "title": "Privacy",
   "exportData": "Export data",
   "deleteAccount": "Delete account",
-  "notConfigured": "This action is not configured yet."
+  "notConfigured": "This action is not configured yet.",
+  "termsConsent": "I accept the terms of service (version {{version}}).",
+  "privacyConsent": "I accept the privacy notice (version {{version}}).",
+  "openTerms": "Read terms of service",
+  "openPrivacy": "Read privacy notice",
+  "acceptDocuments": "Accept and continue",
+  "consentPartialFailure": "Some choices were saved. Try again to finish; repeating a saved choice will not create a duplicate record.",
+  "consentRequired": "Accept both documents to continue.",
+  "consentSaved": "Choices recorded.",
+  "termsTitle": "Terms and privacy notice",
+  "termsDescription": "Read the documents and accept the current versions to continue.",
+  "linkUnavailable": "This document could not be opened. Try again.",
+  "consentSaveFailed": "Your choices could not be recorded. Try again.",
+  "consentRefreshFailure": "Your choices may have been recorded. Try again to confirm; repeating a choice will not create a duplicate record.",
+  "consentOffline": "Connect to the internet to record your acceptance."
 }

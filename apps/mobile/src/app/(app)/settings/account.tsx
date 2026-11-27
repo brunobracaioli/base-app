@@ -1,9 +1,7 @@
 import React from 'react';
 
-import { InformationReservedScreen } from '../../../features/shell/ui/screens';
+import { AccountProfileScreen } from '../../../features/auth/ui/auth-screens';
 
 export default function AccountSettingsRoute() {
-  return (
-    <InformationReservedScreen namespace="settings" titleKey="account" messageKey="notConfigured" />
-  );
+  return <AccountProfileScreen />;
 }

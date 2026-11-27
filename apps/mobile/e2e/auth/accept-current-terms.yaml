@@ -1,0 +1,10 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    id: privacy.checkbox.terms
+- tapOn:
+    id: privacy.checkbox.notice
+- tapOn:
+    id: privacy.accept
+- assertVisible:
+    id: app.home

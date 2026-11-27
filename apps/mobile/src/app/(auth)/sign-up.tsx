@@ -1,7 +1,7 @@
 import React from 'react';
 
-import { AuthReservedScreen } from '../../features/shell/ui/screens';
+import { SignUpScreen } from '../../features/auth/ui/auth-screens';
 
 export default function SignUpRoute() {
-  return <AuthReservedScreen titleKey="signUpTitle" />;
+  return <SignUpScreen />;
 }

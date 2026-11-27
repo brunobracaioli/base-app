@@ -106,7 +106,7 @@ const forbidden = [
     name: 'mobile-private-core-imports-only-from-core',
     severity: 'error',
     from: {
-      path: '^apps/mobile/src/(?!extensions/(?:api|registry|types)\\.ts$|extensions/api\\.test\\.tsx$|features/shell/ui/app-providers\\.tsx$|features/auth/|composition/|shared/api-client/(?:index\\.ts|api-client\\.test\\.ts)$)',
+      path: '^apps/mobile/src/(?!extensions/(?:api|registry|types)\\.ts$|extensions/api\\.test\\.tsx$|features/shell/ui/(?:app-providers|settings-screen)\\.tsx$|features/auth/|composition/|shared/api-client/(?:index\\.ts|api-client\\.test\\.ts)$|app/\\(auth\\)/(?:_layout|welcome|email|code|password|sign-up|forgot-password|new-password)\\.tsx$|app/\\(app\\)/(?:reauth\\.tsx|settings/(?:account|change-email|change-password)\\.tsx)|app/\\(gates\\)/terms\\.tsx$)',
     },
     to: { path: '^apps/mobile/src/(?:composition/|features/auth/)' },
   },

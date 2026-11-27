@@ -5,7 +5,20 @@
   "auth": {
     "token_expired": "Sua sessão expirou.",
     "recent_auth_required": "Entre novamente para continuar.",
-    "account_deleted": "Esta conta não está mais disponível."
+    "account_deleted": "Esta conta não está mais disponível.",
+    "failed": "Não foi possível concluir esta ação. Confira os dados e tente novamente.",
+    "unavailable": "A autenticação está temporariamente indisponível. Tente novamente.",
+    "session_expired": "Sua sessão expirou.",
+    "session_missing": "Entre novamente para continuar.",
+    "invalid_credentials": "Não foi possível entrar com esses dados. Confira e tente novamente.",
+    "email_not_confirmed": "Não foi possível entrar com esses dados. Confira e tente novamente.",
+    "otp_expired": "O código expirou ou não é válido. Solicite outro código e tente novamente.",
+    "weak_password": "A senha não atende aos requisitos de segurança.",
+    "same_password": "Escolha uma senha diferente da atual.",
+    "over_email_send_rate_limit": "Não foi possível enviar agora. Aguarde um minuto e tente novamente.",
+    "email_address_invalid": "Digite um endereço de e-mail válido.",
+    "user_already_exists": "Se o endereço estiver correto, você receberá as instruções por e-mail.",
+    "reauthentication_failed": "Não foi possível confirmar sua identidade. Tente novamente."
   },
   "client": {
     "contract_mismatch": "O app recebeu uma resposta inesperada."

@@ -1,7 +1,7 @@
 import React from 'react';
 
-import { AuthReservedScreen } from '../../features/shell/ui/screens';
+import { ReauthenticationScreen } from '../../features/auth/ui/auth-screens';
 
 export default function ReauthenticationRoute() {
-  return <AuthReservedScreen titleKey="reauthTitle" protectScreen />;
+  return <ReauthenticationScreen protectScreen />;
 }

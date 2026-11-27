@@ -14,5 +14,17 @@
   "legal": "Documentos legales",
   "privacy": "Privacidad",
   "extensions": "Extensiones",
-  "notConfigured": "Disponible después de configurar el producto."
+  "notConfigured": "Disponible después de configurar el producto.",
+  "accountDescription": "Administra tu perfil, correo, contraseña y sesiones.",
+  "displayName": "Nombre visible",
+  "saveProfile": "Guardar perfil",
+  "profileSaved": "Perfil actualizado.",
+  "changeEmail": "Cambiar correo",
+  "changePassword": "Cambiar contraseña",
+  "signOut": "Cerrar sesión en este dispositivo",
+  "signOutEverywhere": "Cerrar sesión en todos los dispositivos",
+  "signOutConfirmation": "Podrás iniciar sesión de nuevo en este dispositivo.",
+  "localeSaved": "Idioma actualizado.",
+  "profileError": "No se pudo actualizar el perfil. Inténtalo de nuevo.",
+  "manageAccount": "Administrar cuenta"
 }

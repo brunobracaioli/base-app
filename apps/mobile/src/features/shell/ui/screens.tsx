@@ -45,6 +45,7 @@ export function HomeScreen() {
     >
       <Text
         accessibilityRole="header"
+        testID="app.home"
         style={{ color: theme.colors.text, fontSize: theme.typography.heading }}
       >
         {t('home')}

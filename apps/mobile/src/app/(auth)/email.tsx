@@ -1,7 +1,7 @@
 import React from 'react';
 
-import { AuthReservedScreen } from '../../features/shell/ui/screens';
+import { EmailCodeStartScreen } from '../../features/auth/ui/auth-screens';
 
 export default function EmailRoute() {
-  return <AuthReservedScreen titleKey="emailScreenTitle" />;
+  return <EmailCodeStartScreen />;
 }

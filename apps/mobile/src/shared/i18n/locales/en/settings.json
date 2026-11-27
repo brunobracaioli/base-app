@@ -14,5 +14,17 @@
   "legal": "Legal documents",
   "privacy": "Privacy",
   "extensions": "Extensions",
-  "notConfigured": "Available after product setup."
+  "notConfigured": "Available after product setup.",
+  "accountDescription": "Manage your profile, email, password, and sessions.",
+  "displayName": "Display name",
+  "saveProfile": "Save profile",
+  "profileSaved": "Profile updated.",
+  "changeEmail": "Change email",
+  "changePassword": "Change password",
+  "signOut": "Sign out on this device",
+  "signOutEverywhere": "Sign out on all devices",
+  "signOutConfirmation": "You can sign in again on this device.",
+  "localeSaved": "Language updated.",
+  "profileError": "The profile could not be updated. Try again.",
+  "manageAccount": "Manage account"
 }

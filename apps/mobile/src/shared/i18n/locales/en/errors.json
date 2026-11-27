@@ -5,7 +5,20 @@
   "auth": {
     "token_expired": "Your session has expired.",
     "recent_auth_required": "Sign in again to continue.",
-    "account_deleted": "This account is no longer available."
+    "account_deleted": "This account is no longer available.",
+    "failed": "This action could not be completed. Check the details and try again.",
+    "unavailable": "Authentication is temporarily unavailable. Try again.",
+    "session_expired": "Your session has expired.",
+    "session_missing": "Sign in again to continue.",
+    "invalid_credentials": "We could not sign in with those details. Check them and try again.",
+    "email_not_confirmed": "We could not sign in with those details. Check them and try again.",
+    "otp_expired": "The code expired or is invalid. Request another code and try again.",
+    "weak_password": "The password does not meet the security requirements.",
+    "same_password": "Choose a password different from your current one.",
+    "over_email_send_rate_limit": "We could not send that now. Wait a minute and try again.",
+    "email_address_invalid": "Enter a valid email address.",
+    "user_already_exists": "If the address is correct, you will receive instructions by email.",
+    "reauthentication_failed": "We could not confirm your identity. Try again."
   },
   "client": {
     "contract_mismatch": "The app received an unexpected response."

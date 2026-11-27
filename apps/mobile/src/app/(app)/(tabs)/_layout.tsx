@@ -18,6 +18,7 @@ export default function TabsLayout() {
         options={{
           title: t('title', { ns: 'settings' }),
           tabBarAccessibilityLabel: t('title', { ns: 'settings' }),
+          tabBarButtonTestID: 'app.tab.settings',
         }}
       />
     </Tabs>

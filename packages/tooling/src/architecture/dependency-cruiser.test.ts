@@ -155,6 +155,34 @@ describe('dependency-cruiser architecture rules', () => {
         appProvidersTestPath,
         `import { subscribeApiAppGates } from '${importPath(appProvidersTestPath, 'apps/mobile/src/shared/api-client/index.ts')}';\nvoid subscribeApiAppGates;\n`,
       );
+      const authScreenPath = 'apps/mobile/src/features/auth/ui/auth-screens.tsx';
+      writeFixture(root, authScreenPath, 'export const AuthScreen = (): null => null;\n');
+      const authPolicyPath = 'apps/mobile/src/features/auth/ui/auth-route-policy.ts';
+      writeFixture(root, authPolicyPath, 'export const resolveAuthRoutePolicy = (): void => {};\n');
+      const authRoutePath = 'apps/mobile/src/app/(auth)/code.tsx';
+      writeFixture(
+        root,
+        authRoutePath,
+        `import { AuthScreen } from '${importPath(authRoutePath, authScreenPath)}';\nvoid AuthScreen;\n`,
+      );
+      const authLayoutPath = 'apps/mobile/src/app/(auth)/_layout.tsx';
+      writeFixture(
+        root,
+        authLayoutPath,
+        `import { resolveAuthRoutePolicy } from '${importPath(authLayoutPath, authPolicyPath)}';\nvoid resolveAuthRoutePolicy;\n`,
+      );
+      const authRuntimePath = 'apps/mobile/src/composition/auth-runtime.tsx';
+      writeFixture(
+        root,
+        authRuntimePath,
+        'export const useOptionalAuthRuntime = (): null => null;\n',
+      );
+      const settingsScreenPath = 'apps/mobile/src/features/shell/ui/settings-screen.tsx';
+      writeFixture(
+        root,
+        settingsScreenPath,
+        `import { useOptionalAuthRuntime } from '${importPath(settingsScreenPath, authRuntimePath)}';\nvoid useOptionalAuthRuntime;\n`,
+      );
       const appConfigProviderPath =
         'apps/mobile/src/features/app-config/ui/app-config-provider.tsx';
       writeFixture(
@@ -355,6 +383,14 @@ describe('dependency-cruiser architecture rules', () => {
       target: 'apps/mobile/src/features/auth/model/auth-ports.ts',
       source: (entry: string, target: string) =>
         `import type { SessionPort } from '${importPath(entry, target)}';\nvoid ({} as SessionPort);\n`,
+    },
+    {
+      rule: 'mobile-private-core-imports-only-from-core',
+      entry: 'apps/mobile/src/app/(auth)/unlisted-route.tsx',
+      target: 'apps/mobile/src/features/auth/ui/auth-screens.tsx',
+      source: (entry: string, target: string) =>
+        `import { AuthScreen } from '${importPath(entry, target)}';\nvoid AuthScreen;\n`,
+      targetContent: 'export const AuthScreen = (): null => null;\n',
     },
     {
       rule: 'mobile-private-api-client-imports-only-from-core',
