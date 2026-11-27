@@ -16,7 +16,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/estree": "1.0.10",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "dependency-cruiser": "18.9.0",
     "eslint": "10.15.0",
     "typescript-eslint": "8.74.0",
